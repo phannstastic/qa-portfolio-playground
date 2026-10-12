@@ -94,6 +94,94 @@ export const app = new Elysia()
       },
     }
   )
+  .post(
+    "/api/test-items",
+    async ({ body, set }) => {
+      // Tolak title yang hanya berisi whitespace (tidak bisa ditangani TypeBox)
+      if (body.title.trim().length === 0) {
+        set.status = 400;
+        return {
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "title must not be empty or contain only whitespace",
+          },
+        };
+      }
+
+      try {
+        const db = getDb();
+        const insertResult = await db.insert(testItems).values({
+          title: body.title.trim(),
+          description: body.description ?? null,
+          status: body.status ?? "draft",
+          complexity: body.complexity ?? 1,
+          isAutomated: body.isAutomated ?? false,
+        });
+
+        const newId = insertResult[0].insertId;
+
+        const created = await db
+          .select()
+          .from(testItems)
+          .where(eq(testItems.id, newId))
+          .limit(1);
+
+        set.status = 201;
+        return {
+          success: true,
+          data: created[0],
+        };
+      } catch (error) {
+        set.status = 500;
+        return {
+          success: false,
+          error: {
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to create test item",
+          },
+        };
+      }
+    },
+    {
+      body: t.Object({
+        title: t.String({ minLength: 1, maxLength: 255 }),
+        description: t.Optional(t.Union([t.String(), t.Null()])),
+        status: t.Optional(
+          t.Union([
+            t.Literal("draft"),
+            t.Literal("in_progress"),
+            t.Literal("completed"),
+            t.Literal("archived"),
+          ])
+        ),
+        complexity: t.Optional(t.Integer({ minimum: 1, maximum: 10 })),
+        isAutomated: t.Optional(t.Boolean()),
+      }),
+      error({ code, set }) {
+        if (code === "PARSE") {
+          set.status = 400;
+          return {
+            success: false,
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "Invalid JSON body",
+            },
+          };
+        }
+        if (code === "VALIDATION") {
+          set.status = 400;
+          return {
+            success: false,
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "Invalid request body",
+            },
+          };
+        }
+      },
+    }
+  )
   .listen(port);
 
 console.log(`🚀 Server running at http://${app.server?.hostname}:${app.server?.port}`);
