@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { testItems } from "./db/schema";
 
@@ -171,6 +171,124 @@ export const app = new Elysia()
         }
         if (code === "VALIDATION") {
           set.status = 400;
+          return {
+            success: false,
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "Invalid request body",
+            },
+          };
+        }
+      },
+    }
+  )
+  .put(
+    "/api/test-items/:id",
+    async ({ params, body, set }) => {
+      if (body.title.trim().length === 0) {
+        set.status = 400;
+        return {
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "title must not be empty or contain only whitespace",
+          },
+        };
+      }
+
+      try {
+        const db = getDb();
+        const existing = await db
+          .select()
+          .from(testItems)
+          .where(eq(testItems.id, params.id))
+          .limit(1);
+
+        if (existing.length === 0) {
+          set.status = 404;
+          return {
+            success: false,
+            error: {
+              code: "NOT_FOUND",
+              message: `Test item with ID ${params.id} not found`,
+            },
+          };
+        }
+
+        await db
+          .update(testItems)
+          .set({
+            title: body.title.trim(),
+            description: body.description,
+            status: body.status,
+            complexity: body.complexity,
+            isAutomated: body.isAutomated,
+            updatedAt: sql`CURRENT_TIMESTAMP`,
+          })
+          .where(eq(testItems.id, params.id));
+
+        const updated = await db
+          .select()
+          .from(testItems)
+          .where(eq(testItems.id, params.id))
+          .limit(1);
+
+        return {
+          success: true,
+          data: updated[0],
+        };
+      } catch (error) {
+        set.status = 500;
+        return {
+          success: false,
+          error: {
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to update test item",
+          },
+        };
+      }
+    },
+    {
+      params: t.Object({
+        id: t.Integer({ minimum: 1, error: "ID must be a positive integer" }),
+      }),
+      body: t.Object({
+        title: t.String({ minLength: 1, maxLength: 255 }),
+        description: t.Union([t.String(), t.Null()]),
+        status: t.Union([
+          t.Literal("draft"),
+          t.Literal("in_progress"),
+          t.Literal("completed"),
+          t.Literal("archived"),
+        ]),
+        complexity: t.Integer({ minimum: 1, maximum: 10 }),
+        isAutomated: t.Boolean(),
+      }),
+      error({ code, error, set }) {
+        if (code === "PARSE") {
+          set.status = 400;
+          return {
+            success: false,
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "Invalid JSON body",
+            },
+          };
+        }
+        if (code === "VALIDATION") {
+          set.status = 400;
+          if (
+            error?.message === "ID must be a positive integer" ||
+            (error as any)?.type === "params"
+          ) {
+            return {
+              success: false,
+              error: {
+                code: "VALIDATION_ERROR",
+                message: "ID must be a positive integer",
+              },
+            };
+          }
           return {
             success: false,
             error: {
