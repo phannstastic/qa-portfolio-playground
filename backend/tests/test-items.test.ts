@@ -90,6 +90,44 @@ describe("Test Items API - CRUD Suite", () => {
       expect(body.error?.code).toBe("NOT_FOUND");
       expect(body.error?.message).toBe(`Test item with ID ${nonExistentId} not found`);
     });
+
+    it("GET detail should return 400 for ID 0, decimal ID, and text ID", async () => {
+      // ID 0
+      const resZero = await app.handle(
+        new Request("http://localhost/api/test-items/0", {
+          method: "GET",
+        })
+      );
+      expect(resZero.status).toBe(400);
+      const bodyZero = (await resZero.json()) as ApiResponse;
+      expect(bodyZero.success).toBe(false);
+      expect(bodyZero.error?.code).toBe("VALIDATION_ERROR");
+      expect(bodyZero.error?.message).toBe("ID must be a positive integer");
+
+      // ID Desimal (1.5)
+      const resDecimal = await app.handle(
+        new Request("http://localhost/api/test-items/1.5", {
+          method: "GET",
+        })
+      );
+      expect(resDecimal.status).toBe(400);
+      const bodyDecimal = (await resDecimal.json()) as ApiResponse;
+      expect(bodyDecimal.success).toBe(false);
+      expect(bodyDecimal.error?.code).toBe("VALIDATION_ERROR");
+      expect(bodyDecimal.error?.message).toBe("ID must be a positive integer");
+
+      // ID Teks ("abc")
+      const resText = await app.handle(
+        new Request("http://localhost/api/test-items/abc", {
+          method: "GET",
+        })
+      );
+      expect(resText.status).toBe(400);
+      const bodyText = (await resText.json()) as ApiResponse;
+      expect(bodyText.success).toBe(false);
+      expect(bodyText.error?.code).toBe("VALIDATION_ERROR");
+      expect(bodyText.error?.message).toBe("ID must be a positive integer");
+    });
   });
 
   describe("POST /api/test-items", () => {
@@ -279,6 +317,22 @@ describe("Test Items API - CRUD Suite", () => {
       expect(body.success).toBe(false);
       expect(body.error?.code).toBe("VALIDATION_ERROR");
       expect(body.error?.message).toBe("Invalid request body");
+    });
+
+    it("should return 400 when body has malformed JSON", async () => {
+      const response = await app.handle(
+        new Request("http://localhost/api/test-items", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{ invalid-json-body ",
+        })
+      );
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as ApiResponse;
+      expect(body.success).toBe(false);
+      expect(body.error?.code).toBe("VALIDATION_ERROR");
+      expect(body.error?.message).toBe("Invalid JSON body");
     });
   });
 
@@ -531,6 +585,33 @@ describe("Test Items API - CRUD Suite", () => {
       expect(body.success).toBe(false);
       expect(body.error?.code).toBe("VALIDATION_ERROR");
       expect(body.error?.message).toBe("Invalid request body");
+    });
+
+    it("should return 400 when PUT body has malformed JSON", async () => {
+      const createRes = await app.handle(
+        new Request("http://localhost/api/test-items", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "Temp For PUT Malformed JSON" }),
+        })
+      );
+      const createBody = (await createRes.json()) as ApiResponse;
+      const targetId = createBody.data.id;
+      createdItemIds.push(targetId);
+
+      const response = await app.handle(
+        new Request(`http://localhost/api/test-items/${targetId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: "{ invalid-json-body ",
+        })
+      );
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as ApiResponse;
+      expect(body.success).toBe(false);
+      expect(body.error?.code).toBe("VALIDATION_ERROR");
+      expect(body.error?.message).toBe("Invalid JSON body");
     });
   });
 
