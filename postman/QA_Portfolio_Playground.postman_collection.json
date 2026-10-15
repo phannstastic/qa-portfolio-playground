@@ -1,0 +1,2060 @@
+{
+  "info": {
+    "_postman_id": "b3e94a8f-28c0-4354-9721-e37456d90184",
+    "name": "QA Portfolio Playground",
+    "description": "Postman collection for the QA Portfolio & Testing Playground API (CRUD on /api/test-items).\n\nRUN ORDER (Collection Runner, keep folder order, run the whole collection):\n00 Setup -> 01 Health -> 02 POST -> 03 GET -> 04 PUT -> 05 DELETE -> 06 Cleanup.\n\nSAFETY:\n- PUT and DELETE only target records created by this collection (activeItemId).\n- nonExistentId is verified with GET before use and is never used for DELETE.\n- Cleanup deletes only the IDs recorded by this run. There is no bulk delete.\n- Re-runnable: IDs are cleared at the start of each run.\n\nEnvironment variables: baseUrl, activeItemId, nonExistentId (+ runtime state: activeCreatedAt, activeUpdatedAt, minimalItemId, nullDescItemId).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 - Setup",
+      "description": "Run this folder first. It resolves a verified 'nonExistentId' (read-only requests only).",
+      "item": [
+        {
+          "name": "Resolve and verify nonExistentId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Setup step (read-only). Reads the list, builds a candidate ID above the highest existing ID, and verifies it with GET until the API answers 404 NOT_FOUND. Only a verified ID is saved to the environment variable 'nonExistentId'. If no candidate can be verified, this request fails with a clear message and nonExistentId stays empty. No DELETE is ever sent to this ID."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Clear the previous value so an unverified or stale ID can never be used.",
+                  "pm.environment.unset(\"nonExistentId\");"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const MAX_ATTEMPTS = 5;",
+                  "let listBody = null;",
+                  "try { listBody = pm.response.json(); } catch (e) { listBody = null; }",
+                  "",
+                  "pm.test(\"List response is a success envelope with array data\", function () {",
+                  "    pm.expect(listBody, \"response must be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(listBody.success).to.be.true;",
+                  "    pm.expect(listBody.data).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "if (listBody && Array.isArray(listBody.data)) {",
+                  "    const ids = listBody.data.map(function (item) { return item.id; }).filter(Number.isInteger);",
+                  "    let candidate = (ids.length ? Math.max.apply(null, ids) : 0) + 1000;",
+                  "    const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "",
+                  "    const fail = function (reason) {",
+                  "        pm.test(\"Setup: nonExistentId could not be verified\", function () {",
+                  "            throw new Error(reason);",
+                  "        });",
+                  "    };",
+                  "",
+                  "    // Verify the candidate with a real GET. Only a NOT_FOUND item envelope counts as \"does not exist\".",
+                  "    const verify = function (attempt) {",
+                  "        pm.sendRequest({ url: baseUrl + \"/api/test-items/\" + candidate, method: \"GET\" }, function (err, res) {",
+                  "            if (err) {",
+                  "                fail(\"Request failed while verifying candidate \" + candidate + \": \" + err);",
+                  "                return;",
+                  "            }",
+                  "            let body = null;",
+                  "            try { body = res.json(); } catch (e) { body = null; }",
+                  "            const confirmedMissing = res.code === 404 && body && body.success === false &&",
+                  "                body.error && body.error.code === \"NOT_FOUND\";",
+                  "            if (confirmedMissing) {",
+                  "                pm.environment.set(\"nonExistentId\", String(candidate));",
+                  "                pm.test(\"Setup: nonExistentId \" + candidate + \" verified as NOT_FOUND\", function () {",
+                  "                    pm.expect(body.error.message).to.eql(\"Test item with ID \" + candidate + \" not found\");",
+                  "                });",
+                  "                return;",
+                  "            }",
+                  "            if (res.code === 200 && attempt < MAX_ATTEMPTS) {",
+                  "                candidate += 1;",
+                  "                verify(attempt + 1);",
+                  "                return;",
+                  "            }",
+                  "            fail(\"Candidate \" + candidate + \" returned HTTP \" + res.code +",
+                  "                \" (not a verified NOT_FOUND) after \" + attempt + \" attempt(s).\");",
+                  "        });",
+                  "    };",
+                  "    verify(1);",
+                  "} else {",
+                  "    pm.test(\"Setup: nonExistentId could not be verified\", function () {",
+                  "        throw new Error(\"Cannot compute a candidate ID because the list response is invalid.\");",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 - Health & Meta",
+      "description": "Endpoints to check server status, uptime, and metadata.",
+      "item": [
+        {
+          "name": "GET / (Root Info)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                ""
+              ]
+            },
+            "description": "Returns basic API metadata and service status."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has name and status online\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an(\"object\");",
+                  "    pm.expect(jsonData.name).to.eql(\"QA Portfolio & Testing Playground API\");",
+                  "    pm.expect(jsonData.status).to.eql(\"online\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /health (Health Check)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Returns health check details including ISO timestamp and uptime in seconds."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has status ok, timestamp, and uptime\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql(\"ok\");",
+                  "    pm.expect(jsonData.timestamp).to.be.a(\"string\");",
+                  "    pm.expect(new Date(jsonData.timestamp).getTime()).to.not.be.NaN;",
+                  "    pm.expect(jsonData.uptime).to.be.a(\"number\");",
+                  "    pm.expect(jsonData.uptime).to.be.at.least(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - POST Test Items",
+      "description": "Run first. 'Valid full payload' creates the main record and sets activeItemId. 'Minimal payload' and 'Description null' record their own IDs for cleanup. Negative requests must not create records.",
+      "item": [
+        {
+          "name": "Valid full payload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Automation Test Item\",\n  \"description\": \"Item created dynamically for lifecycle testing\",\n  \"status\": \"in_progress\",\n  \"complexity\": 5,\n  \"isAutomated\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Creates the MAIN test record used by the GET, PUT and DELETE steps. Before sending, the previous activeItemId is cleared. On success (HTTP 201 with an integer id) it saves activeItemId, activeCreatedAt and activeUpdatedAt to the environment. If this request fails, activeItemId stays empty and all dependent requests report a clear guard failure."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Clear state from any previous run, so a failed POST can never leave a stale ID active.",
+                  "pm.environment.unset(\"activeItemId\");",
+                  "pm.environment.unset(\"activeCreatedAt\");",
+                  "pm.environment.unset(\"activeUpdatedAt\");"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "let jsonData = null;",
+                  "try { jsonData = pm.response.json(); } catch (e) { jsonData = null; }",
+                  "",
+                  "// Record IDs ONLY when the record was really created (HTTP 201 + success + integer id).",
+                  "const created = pm.response.code === 201 && jsonData && jsonData.success === true &&",
+                  "    jsonData.data && Number.isInteger(jsonData.data.id);",
+                  "if (created) {",
+                  "    pm.environment.set(\"activeItemId\", jsonData.data.id);",
+                  "    pm.environment.set(\"activeCreatedAt\", jsonData.data.createdAt);",
+                  "    pm.environment.set(\"activeUpdatedAt\", jsonData.data.updatedAt);",
+                  "}",
+                  "",
+                  "pm.test(\"Response contains created item matching payload\", function () {",
+                  "    pm.expect(jsonData, \"response must be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data).to.be.an(\"object\");",
+                  "    pm.expect(jsonData.data.id).to.be.a(\"number\");",
+                  "    pm.expect(jsonData.data.title).to.eql(\"Postman Automation Test Item\");",
+                  "    pm.expect(jsonData.data.description).to.eql(\"Item created dynamically for lifecycle testing\");",
+                  "    pm.expect(jsonData.data.status).to.eql(\"in_progress\");",
+                  "    pm.expect(jsonData.data.complexity).to.eql(5);",
+                  "    pm.expect(jsonData.data.isAutomated).to.be.true;",
+                  "    pm.expect(jsonData.data.createdAt).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.data.updatedAt).to.be.a(\"string\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Minimal payload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Minimal Item\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Creates an item providing only the mandatory 'title' field. Defaults are applied by database/backend. The created ID is stored in 'minimalItemId' and removed by '06 - Cleanup'."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Clear the previous run's ID so cleanup can only target a record created in THIS run.",
+                  "pm.environment.unset(\"minimalItemId\");"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "let jsonData = null;",
+                  "try { jsonData = pm.response.json(); } catch (e) { jsonData = null; }",
+                  "",
+                  "// Record IDs ONLY when the record was really created (HTTP 201 + success + integer id).",
+                  "const created = pm.response.code === 201 && jsonData && jsonData.success === true &&",
+                  "    jsonData.data && Number.isInteger(jsonData.data.id);",
+                  "if (created) {",
+                  "    pm.environment.set(\"minimalItemId\", jsonData.data.id);",
+                  "}",
+                  "",
+                  "pm.test(\"Item created with defaults applied\", function () {",
+                  "    pm.expect(jsonData, \"response must be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data.title).to.eql(\"Postman Minimal Item\");",
+                  "    pm.expect(jsonData.data.description).to.be.null;",
+                  "    pm.expect(jsonData.data.status).to.eql(\"draft\");",
+                  "    pm.expect(jsonData.data.complexity).to.eql(1);",
+                  "    pm.expect(jsonData.data.isAutomated).to.be.false;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Description null",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Item with Null Description\",\n  \"description\": null,\n  \"status\": \"draft\",\n  \"complexity\": 2,\n  \"isAutomated\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Verifies that explicit null for description is accepted and stored. The created ID is stored in 'nullDescItemId' and removed by '06 - Cleanup'."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Clear the previous run's ID so cleanup can only target a record created in THIS run.",
+                  "pm.environment.unset(\"nullDescItemId\");"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "let jsonData = null;",
+                  "try { jsonData = pm.response.json(); } catch (e) { jsonData = null; }",
+                  "",
+                  "// Record IDs ONLY when the record was really created (HTTP 201 + success + integer id).",
+                  "const created = pm.response.code === 201 && jsonData && jsonData.success === true &&",
+                  "    jsonData.data && Number.isInteger(jsonData.data.id);",
+                  "if (created) {",
+                  "    pm.environment.set(\"nullDescItemId\", jsonData.data.id);",
+                  "}",
+                  "",
+                  "pm.test(\"Description is saved as null\", function () {",
+                  "    pm.expect(jsonData, \"response must be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data.title).to.eql(\"Postman Item with Null Description\");",
+                  "    pm.expect(jsonData.data.description).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing title",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Missing mandatory title field\",\n  \"status\": \"draft\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR when mandatory 'title' field is omitted."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test(\"Error envelope confirms VALIDATION_ERROR\", function () {",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "    pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Whitespace-only title",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"    \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Expects 400 when title consists solely of whitespace characters."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test(\"Rejection message explicitly matches whitespace rule\", function () {",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "    pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"title must not be empty or contain only whitespace\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Title lebih dari 255 karakter",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR when title length exceeds 255 characters (exactly 256 characters sent)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test(\"Error message confirms Invalid request body\", function () {",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "    pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"Invalid request body\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Valid Title\",\n  \"status\": \"unknown_status\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR when status is outside the allowed enum values."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test(\"Error envelope confirms Invalid request body\", function () {",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "    pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"Invalid request body\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complexity di luar rentang 1-10",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Valid Title\",\n  \"complexity\": 11\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR when complexity exceeds 10 (sent 11)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test(\"Error envelope confirms Invalid request body\", function () {",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "    pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"Invalid request body\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "isAutomated dengan tipe salah",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Valid Title\",\n  \"isAutomated\": \"true\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR when isAutomated is provided as string instead of boolean."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test(\"Error envelope confirms Invalid request body\", function () {",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "    pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"Invalid request body\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Malformed JSON",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Broken JSON payload,\n  \"status\":\n",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR with message 'Invalid JSON body' when body syntax is malformed."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test(\"Rejection message explicitly confirms Invalid JSON body\", function () {",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "    pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"Invalid JSON body\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - GET Test Items",
+      "description": "Read-only requests. Detail by activeItemId requires the POST above to have succeeded.",
+      "item": [
+        {
+          "name": "Get all items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items"
+              ]
+            },
+            "description": "Retrieves the full list of test items sorted by createdAt in descending order."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response conforms to success envelope with array data\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get detail using {{activeItemId}}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{activeItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{activeItemId}}"
+              ]
+            },
+            "description": "Fetches details of the record created in the POST test using the dynamic activeItemId environment variable."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"activeItemId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"activeItemId\", \"MISSING_ACTIVE_ITEM_ID\");",
+                  "    console.warn(\"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const activeItemId = pm.environment.get(\"activeItemId\");",
+                  "pm.test(\"Guard: activeItemId is set\", function () {",
+                  "    pm.expect(activeItemId, \"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\").to.be.ok;",
+                  "});",
+                  "if (activeItemId) {",
+                  "    pm.test(\"Status code is 200\", function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "",
+                  "    pm.test(\"Response contains correct item matching activeItemId\", function () {",
+                  "        const jsonData = pm.response.json();",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.data).to.be.an(\"object\");",
+                  "        pm.expect(jsonData.data.id).to.eql(Number(pm.environment.get(\"activeItemId\")));",
+                  "        pm.expect(jsonData.data.title).to.be.a(\"string\");",
+                  "        pm.expect(jsonData.data.status).to.be.oneOf([\"draft\", \"in_progress\", \"completed\", \"archived\"]);",
+                  "        pm.expect(jsonData.data.createdAt).to.be.a(\"string\");",
+                  "        pm.expect(jsonData.data.updatedAt).to.be.a(\"string\");",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get detail for non-existent ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{nonExistentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{nonExistentId}}"
+              ]
+            },
+            "description": "Verifies 404 response when querying an ID that does not exist."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"nonExistentId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"nonExistentId\", \"MISSING_NON_EXISTENT_ID\");",
+                  "    console.warn(\"nonExistentId is empty. Run folder '00 - Setup' first; it picks and verifies an ID that does not exist.\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const nonExistentValue = pm.environment.get(\"nonExistentId\");",
+                  "pm.test(\"Guard: nonExistentId is set\", function () {",
+                  "    pm.expect(nonExistentValue, \"nonExistentId is empty. Run folder '00 - Setup' first; it picks and verifies an ID that does not exist.\").to.be.ok;",
+                  "});",
+                  "if (nonExistentValue) {",
+                  "    pm.test(\"Status code is 404\", function () {",
+                  "        pm.response.to.have.status(404);",
+                  "    });",
+                  "",
+                  "    pm.test(\"Error envelope matches NOT_FOUND contract\", function () {",
+                  "        const jsonData = pm.response.json();",
+                  "        pm.expect(jsonData.success).to.be.false;",
+                  "        pm.expect(jsonData.error).to.be.an(\"object\");",
+                  "        pm.expect(jsonData.error.code).to.eql(\"NOT_FOUND\");",
+                  "        const id = pm.environment.get(\"nonExistentId\");",
+                  "        pm.expect(jsonData.error.message).to.eql(`Test item with ID ${id} not found`);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get detail with invalid ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/abc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "abc"
+              ]
+            },
+            "description": "Verifies 400 error when ID parameter is non-integer (string)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error envelope matches ID validation contract\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "    pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"ID must be a positive integer\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - PUT Test Items",
+      "description": "Updates only the record in {{activeItemId}}. Negative tests run before DELETE.",
+      "item": [
+        {
+          "name": "Update valid",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Automation Test Item (Updated)\",\n  \"description\": \"Updated via Postman collection lifecycle\",\n  \"status\": \"completed\",\n  \"complexity\": 8,\n  \"isAutomated\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{activeItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{activeItemId}}"
+              ]
+            },
+            "description": "Performs a full update on the record created during POST. Checks the updated fields, that createdAt is unchanged, that updatedAt is not earlier than the previous timestamps, and that updatedAt is plausible relative to the request time (60s tolerance). It does not require updatedAt to differ, because timestamps have second precision."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"activeItemId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"activeItemId\", \"MISSING_ACTIVE_ITEM_ID\");",
+                  "    console.warn(\"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\");",
+                  "}",
+                  "pm.variables.set(\"putSentAtMs\", String(Date.now()));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const activeItemId = pm.environment.get(\"activeItemId\");",
+                  "pm.test(\"Guard: activeItemId is set\", function () {",
+                  "    pm.expect(activeItemId, \"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\").to.be.ok;",
+                  "});",
+                  "if (activeItemId) {",
+                  "    pm.test(\"Status code is 200\", function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "",
+                  "    let jsonData = null;",
+                  "    try { jsonData = pm.response.json(); } catch (e) { jsonData = null; }",
+                  "",
+                  "    pm.test(\"Item updated successfully with new fields\", function () {",
+                  "        pm.expect(jsonData, \"response must be JSON\").to.be.an(\"object\");",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.data.id).to.eql(Number(pm.environment.get(\"activeItemId\")));",
+                  "        pm.expect(jsonData.data.title).to.eql(\"Postman Automation Test Item (Updated)\");",
+                  "        pm.expect(jsonData.data.description).to.eql(\"Updated via Postman collection lifecycle\");",
+                  "        pm.expect(jsonData.data.status).to.eql(\"completed\");",
+                  "        pm.expect(jsonData.data.complexity).to.eql(8);",
+                  "        pm.expect(jsonData.data.isAutomated).to.be.true;",
+                  "    });",
+                  "",
+                  "    pm.test(\"createdAt is unchanged by the update\", function () {",
+                  "        pm.expect(jsonData.data.createdAt).to.eql(pm.environment.get(\"activeCreatedAt\"));",
+                  "    });",
+                  "",
+                  "    // Helper: parse timestamp ISO ke epoch ms dengan konsistensi zona waktu",
+                  "    function parseEpoch(timestampStr, referenceMs) {",
+                  "        if (!timestampStr) return NaN;",
+                  "        const rawEpoch = new Date(timestampStr).getTime();",
+                  "        if (isNaN(rawEpoch)) return NaN;",
+                  "        if (typeof timestampStr === \"string\" && timestampStr.endsWith(\"Z\") && typeof referenceMs === \"number\") {",
+                  "            const localEpoch = new Date(timestampStr.slice(0, -1)).getTime();",
+                  "            if (!isNaN(localEpoch) && Math.abs(localEpoch - referenceMs) < Math.abs(rawEpoch - referenceMs)) {",
+                  "                return localEpoch;",
+                  "            }",
+                  "        }",
+                  "        return rawEpoch;",
+                  "    }",
+                  "",
+                  "    pm.test(\"updatedAt is not earlier than the previous timestamps\", function () {",
+                  "        const sentAt = Number(pm.variables.get(\"putSentAtMs\")) || Date.now();",
+                  "        const updatedAt = parseEpoch(jsonData.data.updatedAt, sentAt);",
+                  "        const previousUpdatedAt = parseEpoch(pm.environment.get(\"activeUpdatedAt\"), sentAt);",
+                  "        const createdAt = parseEpoch(jsonData.data.createdAt, sentAt);",
+                  "",
+                  "        pm.expect(updatedAt, \"updatedAt must be a valid timestamp\").to.be.a(\"number\").and.not.NaN;",
+                  "        if (!isNaN(previousUpdatedAt)) {",
+                  "            pm.expect(updatedAt).to.be.at.least(previousUpdatedAt);",
+                  "        }",
+                  "        if (!isNaN(createdAt)) {",
+                  "            pm.expect(updatedAt).to.be.at.least(createdAt);",
+                  "        }",
+                  "    });",
+                  "",
+                  "    // Timestamps have second precision, so a different value is NOT required.",
+                  "    // Only check that updatedAt is plausible relative to the time of this request.",
+                  "    pm.test(\"updatedAt is plausible relative to request time (tolerance 60s)\", function () {",
+                  "        const TOLERANCE_MS = 60000;",
+                  "        const sentAt = Number(pm.variables.get(\"putSentAtMs\"));",
+                  "        const requestTime = !isNaN(sentAt) ? sentAt : Date.now();",
+                  "        const updatedAt = parseEpoch(jsonData.data.updatedAt, requestTime);",
+                  "",
+                  "        pm.expect(sentAt, \"putSentAtMs must be set by the pre-request script\").to.be.a(\"number\").and.not.NaN;",
+                  "        pm.expect(updatedAt, \"updatedAt must be a valid timestamp\").to.be.a(\"number\").and.not.NaN;",
+                  "        pm.expect(updatedAt).to.be.at.least(requestTime - TOLERANCE_MS);",
+                  "        pm.expect(updatedAt).to.be.at.most(Date.now() + TOLERANCE_MS);",
+                  "    });",
+                  "",
+                  "    // Keep the latest updatedAt so the follow-up GET can compare against it.",
+                  "    if (jsonData && jsonData.success === true && jsonData.data && jsonData.data.updatedAt) {",
+                  "        pm.environment.set(\"activeUpdatedAt\", jsonData.data.updatedAt);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get detail after update (verify persisted)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{activeItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{activeItemId}}"
+              ]
+            },
+            "description": "Reads the record again after the PUT and verifies that the update was actually saved, and that the timestamps match the PUT response."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"activeItemId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"activeItemId\", \"MISSING_ACTIVE_ITEM_ID\");",
+                  "    console.warn(\"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const activeItemId = pm.environment.get(\"activeItemId\");",
+                  "pm.test(\"Guard: activeItemId is set\", function () {",
+                  "    pm.expect(activeItemId, \"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\").to.be.ok;",
+                  "});",
+                  "if (activeItemId) {",
+                  "    pm.test(\"Status code is 200\", function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "",
+                  "    let jsonData = null;",
+                  "    try { jsonData = pm.response.json(); } catch (e) { jsonData = null; }",
+                  "",
+                  "    pm.test(\"GET returns the values saved by the PUT\", function () {",
+                  "        pm.expect(jsonData, \"response must be JSON\").to.be.an(\"object\");",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.data.id).to.eql(Number(pm.environment.get(\"activeItemId\")));",
+                  "        pm.expect(jsonData.data.title).to.eql(\"Postman Automation Test Item (Updated)\");",
+                  "        pm.expect(jsonData.data.description).to.eql(\"Updated via Postman collection lifecycle\");",
+                  "        pm.expect(jsonData.data.status).to.eql(\"completed\");",
+                  "        pm.expect(jsonData.data.complexity).to.eql(8);",
+                  "        pm.expect(jsonData.data.isAutomated).to.be.true;",
+                  "    });",
+                  "",
+                  "    pm.test(\"Timestamps are consistent with the PUT response\", function () {",
+                  "        pm.expect(jsonData.data.createdAt).to.eql(pm.environment.get(\"activeCreatedAt\"));",
+                  "        pm.expect(jsonData.data.updatedAt).to.eql(pm.environment.get(\"activeUpdatedAt\"));",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "ID tidak ditemukan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Update Non Existent\",\n  \"description\": null,\n  \"status\": \"draft\",\n  \"complexity\": 1,\n  \"isAutomated\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{nonExistentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{nonExistentId}}"
+              ]
+            },
+            "description": "Expects 404 NOT_FOUND when attempting to update a record with an ID that does not exist."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"nonExistentId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"nonExistentId\", \"MISSING_NON_EXISTENT_ID\");",
+                  "    console.warn(\"nonExistentId is empty. Run folder '00 - Setup' first; it picks and verifies an ID that does not exist.\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const nonExistentValue = pm.environment.get(\"nonExistentId\");",
+                  "pm.test(\"Guard: nonExistentId is set\", function () {",
+                  "    pm.expect(nonExistentValue, \"nonExistentId is empty. Run folder '00 - Setup' first; it picks and verifies an ID that does not exist.\").to.be.ok;",
+                  "});",
+                  "if (nonExistentValue) {",
+                  "    pm.test(\"Status code is 404\", function () {",
+                  "        pm.response.to.have.status(404);",
+                  "    });",
+                  "",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.test(\"Error envelope matches NOT_FOUND contract\", function () {",
+                  "        pm.expect(jsonData.success).to.be.false;",
+                  "        pm.expect(jsonData.error.code).to.eql(\"NOT_FOUND\");",
+                  "        const id = pm.environment.get(\"nonExistentId\");",
+                  "        pm.expect(jsonData.error.message).to.eql(`Test item with ID ${id} not found`);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Whitespace-only title",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"    \",\n  \"description\": null,\n  \"status\": \"draft\",\n  \"complexity\": 1,\n  \"isAutomated\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{activeItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{activeItemId}}"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR when PUT title consists solely of whitespace."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"activeItemId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"activeItemId\", \"MISSING_ACTIVE_ITEM_ID\");",
+                  "    console.warn(\"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const activeItemId = pm.environment.get(\"activeItemId\");",
+                  "pm.test(\"Guard: activeItemId is set\", function () {",
+                  "    pm.expect(activeItemId, \"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\").to.be.ok;",
+                  "});",
+                  "if (activeItemId) {",
+                  "    pm.test(\"Status code is 400\", function () {",
+                  "        pm.response.to.have.status(400);",
+                  "    });",
+                  "",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.test(\"Error message confirms whitespace rule\", function () {",
+                  "        pm.expect(jsonData.success).to.be.false;",
+                  "        pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "        pm.expect(jsonData.error.message).to.eql(\"title must not be empty or contain only whitespace\");",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Valid Title\",\n  \"description\": null,\n  \"status\": \"invalid_enum_val\",\n  \"complexity\": 1,\n  \"isAutomated\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{activeItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{activeItemId}}"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR when status is outside the allowed enum values."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"activeItemId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"activeItemId\", \"MISSING_ACTIVE_ITEM_ID\");",
+                  "    console.warn(\"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const activeItemId = pm.environment.get(\"activeItemId\");",
+                  "pm.test(\"Guard: activeItemId is set\", function () {",
+                  "    pm.expect(activeItemId, \"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\").to.be.ok;",
+                  "});",
+                  "if (activeItemId) {",
+                  "    pm.test(\"Status code is 400\", function () {",
+                  "        pm.response.to.have.status(400);",
+                  "    });",
+                  "",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.test(\"Error envelope confirms Invalid request body\", function () {",
+                  "        pm.expect(jsonData.success).to.be.false;",
+                  "        pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "        pm.expect(jsonData.error.message).to.eql(\"Invalid request body\");",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complexity di luar rentang 1-10",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Valid Title\",\n  \"description\": null,\n  \"status\": \"draft\",\n  \"complexity\": 0,\n  \"isAutomated\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{activeItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{activeItemId}}"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR when complexity is outside 1-10 range (sent 0)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"activeItemId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"activeItemId\", \"MISSING_ACTIVE_ITEM_ID\");",
+                  "    console.warn(\"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const activeItemId = pm.environment.get(\"activeItemId\");",
+                  "pm.test(\"Guard: activeItemId is set\", function () {",
+                  "    pm.expect(activeItemId, \"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\").to.be.ok;",
+                  "});",
+                  "if (activeItemId) {",
+                  "    pm.test(\"Status code is 400\", function () {",
+                  "        pm.response.to.have.status(400);",
+                  "    });",
+                  "",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.test(\"Error envelope confirms Invalid request body\", function () {",
+                  "        pm.expect(jsonData.success).to.be.false;",
+                  "        pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "        pm.expect(jsonData.error.message).to.eql(\"Invalid request body\");",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "isAutomated dengan tipe salah",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Valid Title\",\n  \"description\": null,\n  \"status\": \"draft\",\n  \"complexity\": 1,\n  \"isAutomated\": \"true\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{activeItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{activeItemId}}"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR when isAutomated is provided as string instead of boolean."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"activeItemId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"activeItemId\", \"MISSING_ACTIVE_ITEM_ID\");",
+                  "    console.warn(\"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const activeItemId = pm.environment.get(\"activeItemId\");",
+                  "pm.test(\"Guard: activeItemId is set\", function () {",
+                  "    pm.expect(activeItemId, \"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\").to.be.ok;",
+                  "});",
+                  "if (activeItemId) {",
+                  "    pm.test(\"Status code is 400\", function () {",
+                  "        pm.response.to.have.status(400);",
+                  "    });",
+                  "",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.test(\"Error envelope confirms Invalid request body\", function () {",
+                  "        pm.expect(jsonData.success).to.be.false;",
+                  "        pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "        pm.expect(jsonData.error.message).to.eql(\"Invalid request body\");",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Malformed JSON",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Broken JSON payload,\n  \"complexity\":\n",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{activeItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{activeItemId}}"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR with message 'Invalid JSON body' when body syntax is malformed."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"activeItemId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"activeItemId\", \"MISSING_ACTIVE_ITEM_ID\");",
+                  "    console.warn(\"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const activeItemId = pm.environment.get(\"activeItemId\");",
+                  "pm.test(\"Guard: activeItemId is set\", function () {",
+                  "    pm.expect(activeItemId, \"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\").to.be.ok;",
+                  "});",
+                  "if (activeItemId) {",
+                  "    pm.test(\"Status code is 400\", function () {",
+                  "        pm.response.to.have.status(400);",
+                  "    });",
+                  "",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.test(\"Rejection message explicitly confirms Invalid JSON body\", function () {",
+                  "        pm.expect(jsonData.success).to.be.false;",
+                  "        pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "        pm.expect(jsonData.error.message).to.eql(\"Invalid JSON body\");",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - DELETE Test Items",
+      "description": "Runs last in the lifecycle: delete the main test record, verify it is gone, and confirm a second delete returns 404. Only {{activeItemId}} is ever deleted here.",
+      "item": [
+        {
+          "name": "ID invalid",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "0"
+              ]
+            },
+            "description": "Expects 400 VALIDATION_ERROR when ID parameter is 0 (must be positive integer)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test(\"Error envelope confirms ID must be a positive integer\", function () {",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "    pm.expect(jsonData.error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"ID must be a positive integer\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete record pengujian",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{activeItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{activeItemId}}"
+              ]
+            },
+            "description": "Deletes the dynamic record created during POST (identified by activeItemId)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"activeItemId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"activeItemId\", \"MISSING_ACTIVE_ITEM_ID\");",
+                  "    console.warn(\"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const activeItemId = pm.environment.get(\"activeItemId\");",
+                  "pm.test(\"Guard: activeItemId is set\", function () {",
+                  "    pm.expect(activeItemId, \"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\").to.be.ok;",
+                  "});",
+                  "if (activeItemId) {",
+                  "    pm.test(\"Status code is 200\", function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.test(\"Response confirms successful deletion of activeItemId\", function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.data.id).to.eql(Number(pm.environment.get(\"activeItemId\")));",
+                  "        pm.expect(jsonData.data.message).to.eql(\"Test item deleted successfully\");",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verifikasi record sudah terhapus",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{activeItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{activeItemId}}"
+              ]
+            },
+            "description": "Verifies that subsequent GET on activeItemId now returns 404 NOT_FOUND."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"activeItemId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"activeItemId\", \"MISSING_ACTIVE_ITEM_ID\");",
+                  "    console.warn(\"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const activeItemId = pm.environment.get(\"activeItemId\");",
+                  "pm.test(\"Guard: activeItemId is set\", function () {",
+                  "    pm.expect(activeItemId, \"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\").to.be.ok;",
+                  "});",
+                  "if (activeItemId) {",
+                  "    pm.test(\"Status code is 404\", function () {",
+                  "        pm.response.to.have.status(404);",
+                  "    });",
+                  "",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.test(\"Record confirmed deleted with 404 NOT_FOUND\", function () {",
+                  "        pm.expect(jsonData.success).to.be.false;",
+                  "        pm.expect(jsonData.error.code).to.eql(\"NOT_FOUND\");",
+                  "        const id = pm.environment.get(\"activeItemId\");",
+                  "        pm.expect(jsonData.error.message).to.eql(`Test item with ID ${id} not found`);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete ulang record yang sudah terhapus",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{activeItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{activeItemId}}"
+              ]
+            },
+            "description": "Deletes the same test record a second time. It targets only the record created by this collection run and must now return 404 NOT_FOUND. This is the last step of the lifecycle and clears the run state afterwards."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guard: never fall back to a static or old ID.",
+                  "if (!pm.environment.get(\"activeItemId\")) {",
+                  "    // Local override: the URL can never resolve to an empty path or a stale ID.",
+                  "    // The API rejects this placeholder (not an integer), so nothing is read or changed.",
+                  "    pm.variables.set(\"activeItemId\", \"MISSING_ACTIVE_ITEM_ID\");",
+                  "    console.warn(\"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const activeItemId = pm.environment.get(\"activeItemId\");",
+                  "pm.test(\"Guard: activeItemId is set\", function () {",
+                  "    pm.expect(activeItemId, \"activeItemId is empty. POST 'Valid full payload' did not create a record. Run folder '02 - POST Test Items' first (Collection Runner, folder order).\").to.be.ok;",
+                  "});",
+                  "if (activeItemId) {",
+                  "    pm.test(\"Status code is 404\", function () {",
+                  "        pm.response.to.have.status(404);",
+                  "    });",
+                  "",
+                  "    let jsonData = null;",
+                  "    try { jsonData = pm.response.json(); } catch (e) { jsonData = null; }",
+                  "",
+                  "    pm.test(\"Error envelope matches NOT_FOUND contract for the already-deleted record\", function () {",
+                  "        pm.expect(jsonData, \"response must be JSON\").to.be.an(\"object\");",
+                  "        pm.expect(jsonData.success).to.be.false;",
+                  "        pm.expect(jsonData.error.code).to.eql(\"NOT_FOUND\");",
+                  "        pm.expect(jsonData.error.message).to.eql(\"Test item with ID \" + pm.environment.get(\"activeItemId\") + \" not found\");",
+                  "    });",
+                  "}",
+                  "// End of lifecycle: clear the run state so nothing stale remains for the next run.",
+                  "pm.environment.unset(\"activeItemId\");",
+                  "pm.environment.unset(\"activeCreatedAt\");",
+                  "pm.environment.unset(\"activeUpdatedAt\");"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 - Cleanup",
+      "description": "Removes ONLY the extra records created by this run's 'Minimal payload' and 'Description null' POST requests. Each request deletes a single recorded ID and is skipped when that ID is empty. There is no bulk delete.",
+      "item": [
+        {
+          "name": "Cleanup minimal payload record",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{minimalItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{minimalItemId}}"
+              ]
+            },
+            "description": "Deletes only the record created by 'Minimal payload' (ID stored in minimalItemId). Skipped if that POST did not create a record."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const recordedId = pm.environment.get(\"minimalItemId\");",
+                  "if (!recordedId) {",
+                  "    console.log(\"minimalItemId is empty: the related POST did not create a record. Nothing to clean up.\");",
+                  "    // Postman 10.18+ skips the request entirely. On older versions the unresolved",
+                  "    // placeholder is rejected by the API (HTTP 400), so nothing can be deleted.",
+                  "    if (pm.execution && pm.execution.skipRequest) {",
+                  "        pm.execution.skipRequest();",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const recordedId = pm.environment.get(\"minimalItemId\");",
+                  "if (recordedId) {",
+                  "    pm.test(\"Cleanup: status is 200 (deleted) or 404 (already gone)\", function () {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "    });",
+                  "    if (pm.response.code === 200) {",
+                  "        pm.test(\"Cleanup: response confirms deletion of the recorded ID\", function () {",
+                  "            const jsonData = pm.response.json();",
+                  "            pm.expect(jsonData.success).to.be.true;",
+                  "            pm.expect(jsonData.data.id).to.eql(Number(recordedId));",
+                  "            pm.expect(jsonData.data.message).to.eql(\"Test item deleted successfully\");",
+                  "        });",
+                  "    }",
+                  "    pm.environment.unset(\"minimalItemId\");",
+                  "} else {",
+                  "    // No ID was recorded, so no DELETE target exists. Make sure nothing was deleted.",
+                  "    pm.test(\"Cleanup skipped: no minimalItemId recorded, nothing was deleted\", function () {",
+                  "        pm.expect(pm.response.code).to.not.eql(200);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cleanup description-null record",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/test-items/{{nullDescItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "test-items",
+                "{{nullDescItemId}}"
+              ]
+            },
+            "description": "Deletes only the record created by 'Description null' (ID stored in nullDescItemId). Skipped if that POST did not create a record."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const recordedId = pm.environment.get(\"nullDescItemId\");",
+                  "if (!recordedId) {",
+                  "    console.log(\"nullDescItemId is empty: the related POST did not create a record. Nothing to clean up.\");",
+                  "    // Postman 10.18+ skips the request entirely. On older versions the unresolved",
+                  "    // placeholder is rejected by the API (HTTP 400), so nothing can be deleted.",
+                  "    if (pm.execution && pm.execution.skipRequest) {",
+                  "        pm.execution.skipRequest();",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const recordedId = pm.environment.get(\"nullDescItemId\");",
+                  "if (recordedId) {",
+                  "    pm.test(\"Cleanup: status is 200 (deleted) or 404 (already gone)\", function () {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "    });",
+                  "    if (pm.response.code === 200) {",
+                  "        pm.test(\"Cleanup: response confirms deletion of the recorded ID\", function () {",
+                  "            const jsonData = pm.response.json();",
+                  "            pm.expect(jsonData.success).to.be.true;",
+                  "            pm.expect(jsonData.data.id).to.eql(Number(recordedId));",
+                  "            pm.expect(jsonData.data.message).to.eql(\"Test item deleted successfully\");",
+                  "        });",
+                  "    }",
+                  "    pm.environment.unset(\"nullDescItemId\");",
+                  "} else {",
+                  "    // No ID was recorded, so no DELETE target exists. Make sure nothing was deleted.",
+                  "    pm.test(\"Cleanup skipped: no nullDescItemId recorded, nothing was deleted\", function () {",
+                  "        pm.expect(pm.response.code).to.not.eql(200);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
