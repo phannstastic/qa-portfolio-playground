@@ -161,6 +161,28 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Success alert message for operations
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  // Create Modal & Form State
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [formErrors, setFormErrors] = useState<{ title?: string; complexity?: string }>({})
+  const [formData, setFormData] = useState<{
+    title: string
+    description: string
+    status: TestItemStatus
+    complexity: number | string
+    isAutomated: boolean
+  }>({
+    title: '',
+    description: '',
+    status: 'draft',
+    complexity: 1,
+    isAutomated: false,
+  })
+
   const navItems: { id: NavigationTab; label: string; badge?: string }[] = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'test-items', label: 'Test Items' },
@@ -229,6 +251,138 @@ export default function App() {
       }
     }
   }, [activeTab, fetchTestItems])
+
+  // Close modal on Escape key press
+  useEffect(() => {
+    if (!isCreateModalOpen) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSubmitting) {
+        setIsCreateModalOpen(false)
+        setFormErrors({})
+        setCreateError(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isCreateModalOpen, isSubmitting])
+
+  const handleOpenCreateModal = () => {
+    setFormData({
+      title: '',
+      description: '',
+      status: 'draft',
+      complexity: 1,
+      isAutomated: false,
+    })
+    setFormErrors({})
+    setCreateError(null)
+    setIsCreateModalOpen(true)
+  }
+
+  const handleCloseCreateModal = () => {
+    if (isSubmitting) return
+    setIsCreateModalOpen(false)
+    setFormErrors({})
+    setCreateError(null)
+  }
+
+  const validateForm = () => {
+    const errors: { title?: string; complexity?: string } = {}
+    const trimmedTitle = formData.title.trim()
+
+    if (!trimmedTitle) {
+      errors.title = 'Title is required and must not be empty or whitespace only.'
+    } else if (trimmedTitle.length > 255) {
+      errors.title = 'Title must not exceed 255 characters.'
+    }
+
+    if (formData.complexity === '' || formData.complexity === null || formData.complexity === undefined) {
+      errors.complexity = 'Complexity is required (1 to 10).'
+    } else {
+      const compNum = Number(formData.complexity)
+      if (!Number.isInteger(compNum) || compNum < 1 || compNum > 10) {
+        errors.complexity = 'Complexity must be an integer between 1 and 10.'
+      }
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (isSubmitting) return
+
+    if (!validateForm()) {
+      return
+    }
+
+    setIsSubmitting(true)
+    setCreateError(null)
+
+    try {
+      const payload = {
+        title: formData.title.trim(),
+        description: formData.description.trim() ? formData.description.trim() : null,
+        status: formData.status,
+        complexity: Number(formData.complexity),
+        isAutomated: Boolean(formData.isAutomated),
+      }
+
+      const res = await fetch('/api/test-items', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      // Handle non-2xx HTTP responses
+      if (!res.ok) {
+        let errorMsg = `Server error (HTTP ${res.status})`
+        try {
+          const errorJson = (await res.json()) as ApiResponse<unknown>
+          if (errorJson?.error?.message) {
+            errorMsg = errorJson.error.message
+          }
+        } catch {
+          // Response body was not JSON; keep status-based fallback
+        }
+        throw new Error(errorMsg)
+      }
+
+      // Parse JSON response envelope and verify contract
+      const json = (await res.json()) as ApiResponse<TestItem>
+      if (res.status !== 201 || !json.success || !json.data || typeof json.data.id !== 'number') {
+        const errorDetail = json.error?.message || 'Invalid API response format received from server.'
+        throw new Error(errorDetail)
+      }
+
+      // Success flow
+      setSuccessMessage(`Test item "${json.data.title}" (#${json.data.id}) was created successfully!`)
+      setIsCreateModalOpen(false)
+      setFormData({
+        title: '',
+        description: '',
+        status: 'draft',
+        complexity: 1,
+        isAutomated: false,
+      })
+      setFormErrors({})
+      setCreateError(null)
+
+      // Refresh test items catalog
+      void fetchTestItems()
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'An unexpected error occurred while creating test item.'
+      setCreateError(message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row antialiased">
@@ -624,6 +778,25 @@ export default function App() {
                 <div className="flex items-center gap-2.5 self-start sm:self-auto">
                   <button
                     type="button"
+                    onClick={handleOpenCreateModal}
+                    aria-label="Create new test item"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                    <span>Create Test Item</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => fetchTestItems()}
                     disabled={isLoading}
                     aria-label="Refresh test items"
@@ -647,6 +820,49 @@ export default function App() {
                   </button>
                 </div>
               </div>
+
+              {/* Success Notification Alert */}
+              {successMessage && (
+                <div
+                  role="status"
+                  className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-4 flex items-center justify-between gap-3 text-xs text-emerald-300 shadow-sm"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <svg
+                      className="h-5 w-5 text-emerald-400 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <span className="font-medium">{successMessage}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSuccessMessage(null)}
+                    aria-label="Dismiss success message"
+                    className="p-1 rounded-md text-emerald-400/80 hover:text-emerald-200 hover:bg-emerald-900/50 transition-colors"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
 
               {/* Loading State */}
               {isLoading && testItems.length === 0 && (
@@ -912,6 +1128,306 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* Create Test Item Modal Dialog */}
+      {isCreateModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-modal-title"
+          className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4"
+        >
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
+            onClick={handleCloseCreateModal}
+            aria-hidden="true"
+          />
+
+          {/* Modal Dialog Content */}
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 sm:p-7 space-y-5 my-8 z-10">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-slate-800">
+              <div className="space-y-1">
+                <h3 id="create-modal-title" className="text-lg font-bold text-white tracking-tight">
+                  Create Test Item
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Add a new test scenario specification via <code className="text-indigo-300 font-mono">POST /api/test-items</code>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseCreateModal}
+                disabled={isSubmitting}
+                aria-label="Close dialog"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Submission Error Banner */}
+            {createError && (
+              <div
+                role="alert"
+                className="bg-red-950/40 border border-red-500/40 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-red-300"
+              >
+                <svg
+                  className="h-4 w-4 text-red-400 shrink-0 mt-0.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                  />
+                </svg>
+                <div className="space-y-0.5 flex-1">
+                  <p className="font-semibold text-red-200">Failed to create test item</p>
+                  <p className="text-red-300/90 leading-relaxed">{createError}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Create Form */}
+            <form onSubmit={handleCreateSubmit} className="space-y-4" noValidate>
+              {/* Title Field */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="field-title" className="text-xs font-semibold text-slate-200">
+                    Title <span className="text-indigo-400">*</span>
+                  </label>
+                  <span
+                    className={`text-[10px] font-mono ${
+                      typeof formData.title === 'string' && formData.title.length > 255
+                        ? 'text-red-400'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    {formData.title.length}/255
+                  </span>
+                </div>
+                <input
+                  id="field-title"
+                  type="text"
+                  name="title"
+                  maxLength={255}
+                  disabled={isSubmitting}
+                  value={formData.title}
+                  onChange={(e) => {
+                    setFormData({ ...formData, title: e.target.value })
+                    if (formErrors.title) {
+                      setFormErrors({ ...formErrors, title: undefined })
+                    }
+                  }}
+                  placeholder="e.g. Verify boundary values on POST /api/test-items"
+                  className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border text-xs text-white placeholder-slate-500 transition-colors focus:outline-none focus:ring-2 disabled:opacity-50 ${
+                    formErrors.title
+                      ? 'border-red-500/80 focus:border-red-500 focus:ring-red-500/20'
+                      : 'border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20'
+                  }`}
+                  aria-invalid={formErrors.title ? 'true' : 'false'}
+                  aria-describedby={formErrors.title ? 'field-title-error' : undefined}
+                />
+                {formErrors.title && (
+                  <p id="field-title-error" className="text-[11px] text-red-400 font-medium flex items-center gap-1">
+                    <svg
+                      className="h-3 w-3 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                      />
+                    </svg>
+                    <span>{formErrors.title}</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Description Field */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="field-description" className="text-xs font-semibold text-slate-200">
+                    Description <span className="text-slate-500 font-normal">(Optional)</span>
+                  </label>
+                </div>
+                <textarea
+                  id="field-description"
+                  name="description"
+                  rows={3}
+                  disabled={isSubmitting}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Detailed test preconditions, assertions, expected outcomes..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white placeholder-slate-500 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50 resize-none"
+                />
+              </div>
+
+              {/* Status & Complexity Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Status Select */}
+                <div className="space-y-1.5">
+                  <label htmlFor="field-status" className="text-xs font-semibold text-slate-200">
+                    Status
+                  </label>
+                  <select
+                    id="field-status"
+                    name="status"
+                    disabled={isSubmitting}
+                    value={formData.status}
+                    onChange={(e) =>
+                      setFormData({ ...formData, status: e.target.value as TestItemStatus })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50"
+                  >
+                    <option value="draft">Draft (Default)</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </div>
+
+                {/* Complexity Number Input */}
+                <div className="space-y-1.5">
+                  <label htmlFor="field-complexity" className="text-xs font-semibold text-slate-200">
+                    Complexity (1 - 10)
+                  </label>
+                  <input
+                    id="field-complexity"
+                    type="number"
+                    name="complexity"
+                    min={1}
+                    max={10}
+                    step={1}
+                    disabled={isSubmitting}
+                    value={formData.complexity}
+                    onChange={(e) => {
+                      setFormData({ ...formData, complexity: e.target.value })
+                      if (formErrors.complexity) {
+                        setFormErrors({ ...formErrors, complexity: undefined })
+                      }
+                    }}
+                    className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border text-xs text-white transition-colors focus:outline-none focus:ring-2 disabled:opacity-50 ${
+                      formErrors.complexity
+                        ? 'border-red-500/80 focus:border-red-500 focus:ring-red-500/20'
+                        : 'border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20'
+                    }`}
+                    aria-invalid={formErrors.complexity ? 'true' : 'false'}
+                    aria-describedby={formErrors.complexity ? 'field-complexity-error' : undefined}
+                  />
+                  {formErrors.complexity && (
+                    <p
+                      id="field-complexity-error"
+                      className="text-[11px] text-red-400 font-medium flex items-center gap-1"
+                    >
+                      <svg
+                        className="h-3 w-3 shrink-0"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                        />
+                      </svg>
+                      <span>{formErrors.complexity}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Automation Checkbox */}
+              <div className="pt-1">
+                <label
+                  htmlFor="field-is-automated"
+                  className="flex items-start gap-3 p-3 bg-slate-950/50 border border-slate-800/80 rounded-xl cursor-pointer hover:border-slate-700 transition-colors"
+                >
+                  <input
+                    id="field-is-automated"
+                    type="checkbox"
+                    name="isAutomated"
+                    disabled={isSubmitting}
+                    checked={formData.isAutomated}
+                    onChange={(e) => setFormData({ ...formData, isAutomated: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-950"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-semibold text-slate-200 block">
+                      Automated Test Case
+                    </span>
+                    <span className="text-[11px] text-slate-400 block leading-relaxed">
+                      Mark this scenario as implemented in an automated regression suite (Default: False).
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleCloseCreateModal}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <svg
+                        className="h-3.5 w-3.5 animate-spin text-white"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
+                        />
+                      </svg>
+                      <span>Creating...</span>
+                    </>
+                  ) : (
+                    <span>Create Test Item</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
