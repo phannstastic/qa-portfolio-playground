@@ -1,55 +1,84 @@
 # QA Portfolio & Testing Playground
 
-A backend REST API and automated testing playground built to showcase end-to-end Quality Assurance (QA) practices, including API test automation, schema validation, contract testing, and lifecycle test collections.
+A full-stack testing playground and QA portfolio project built to demonstrate modern Quality Assurance (QA) engineering practices across API test automation, database validation, contract verification, interactive frontend UI testing, and Cypress E2E browser automation.
 
 ---
 
 ## Project Overview
 
-This project serves as a portfolio piece demonstrating software quality assurance fundamentals:
-- **Clean RESTful API Design**: Clear endpoints following HTTP standards and consistent response envelopes.
-- **Strict Input Validation**: Boundary testing, data type enforcement, whitespace filtering, and error sanitization using TypeBox schema validation.
-- **Automated Regression Suite**: Unit and integration test suite executing automated checks across positive, negative, and edge-case scenarios.
-- **Postman API Test Automation**: Comprehensive Postman Collection featuring pre-request scripts, automated guard assertions, environment chaining, and cleanup requests.
+This project serves as a showcase portfolio for a **Junior QA Engineer**, demonstrating end-to-end testing competencies across multiple layers of the testing pyramid:
+- **Clean RESTful API Design**: Predictable endpoints adhering to HTTP standards with standardized response envelopes.
+- **Strict Schema & Boundary Validation**: Data type enforcement, boundary testing, string trimming, and malformed input sanitization via TypeBox.
+- **Backend Integration Tests (`bun:test`)**: Automated integration tests verifying CRUD functionality, error handling, status codes, and database state transitions.
+- **Postman API Test Automation**: Structured Postman Collection featuring pre-request scripts, automated assertion guards, environment chaining, and automated teardown.
+- **Frontend Interactive Dashboard**: React 19 single-page application with real-time search, multi-criteria filtering, 6-mode sorting, and modal CRUD operations.
+- **Cypress E2E UI Automation**: Comprehensive browser automation suite validating user workflows, input edge cases, validation feedbacks, delete cancellations, and isolated network failure states.
 
 ---
 
 ## Tech Stack
 
-- **Backend Runtime**: [Bun](https://bun.sh/) (v1.2+)
-- **Backend Framework**: [ElysiaJS](https://elysiajs.com/) (fast, typed web framework)
-- **Database & ORM**: [MariaDB / MySQL](https://mariadb.org/) via [Drizzle ORM](https://orm.drizzle.team/)
-- **Validation**: [TypeBox](https://github.com/sinclairzx81/typebox) (Elysia schema validator)
-- **Test Framework**: `bun:test`
-- **Frontend Stack**: [React](https://react.dev/) (v19) + [Vite](https://vite.dev/) (v8) + [TypeScript](https://www.typescriptlang.org/)
-- **Frontend Styling & Linting**: [Tailwind CSS v4](https://tailwindcss.com/) + [Oxlint](https://oxc.rs/)
-- **API Client & Collection**: [Postman](https://www.postman.com/) (Collection v2.1.0)
+| Domain | Technology / Tool | Version / Details |
+|---|---|---|
+| **Backend Runtime** | [Bun](https://bun.sh/) | v1.2+ (high-performance JavaScript & TypeScript runtime) |
+| **Backend Framework** | [ElysiaJS](https://elysiajs.com/) | Fast, typed REST API framework |
+| **Database & ORM** | [MariaDB / MySQL](https://mariadb.org/) | Relational database via [Drizzle ORM](https://orm.drizzle.team/) |
+| **Schema Validation** | [TypeBox](https://github.com/sinclairzx81/typebox) | Runtime validation for route payloads & query params |
+| **Backend Testing** | `bun:test` | Built-in test runner for unit & integration specs |
+| **Frontend Framework** | [React](https://react.dev/) | React 19 + TypeScript |
+| **Build Tool** | [Vite](https://vite.dev/) | Vite 8 + development proxy |
+| **Styling** | [Tailwind CSS](https://tailwindcss.com/) | Tailwind CSS v4 |
+| **Frontend Linter** | [Oxlint](https://oxc.rs/) | High-performance JavaScript/TypeScript linter |
+| **E2E UI Automation** | [Cypress](https://www.cypress.io/) | Cypress v16.2.0 for automated browser testing |
+| **API Client & Runner** | [Postman](https://www.postman.com/) | Postman Collection v2.1.0 with automated lifecycle tests |
 
 ---
 
-## API Features & Endpoints
+## Features & Capabilities
 
-All responses follow standard JSON response envelopes:
-- **Success**: `{ "success": true, "data": <object | array> }`
-- **Error**: `{ "success": false, "error": { "code": "<ERROR_CODE>", "message": "<description>" } }`
+### 1. Frontend Web Application
+The frontend (`frontend/src/App.tsx`) provides an interactive interface for managing quality testing artifacts:
+- **Metrics Overview Bar**: Displays live counts for Total Items, Draft, In Progress, Completed, Archived, and Automation Coverage percentage.
+- **Test Items Catalog**: Responsive grid/card layout with metadata badges (status, complexity 1–10, automation indicator, and formatted timestamps).
+- **Live Search**: Client-side title search with case-insensitive matching and whitespace trimming.
+- **Status Filter**: Real-time filtering by status (`All`, `Draft`, `In Progress`, `Completed`, `Archived`) with count indicators.
+- **6-Mode Sorting**:
+  - Created: Newest First (default)
+  - Created: Oldest First
+  - Title: A to Z
+  - Title: Z to A
+  - Complexity: Highest First
+  - Complexity: Lowest First
+- **Create Test Item**: Modal form with client-side input validation, error messaging, and default field handling.
+- **Edit Test Item**: Pre-populated modal form supporting full strict updates with validation and error reporting.
+- **Delete with Confirmation**: Two-step modal confirmation dialog preventing accidental deletions.
+- **Error & Resilience States**:
+  - Global error banner with an isolated "Retry Connection" button when the backend service is unreachable.
+  - Dedicated empty states distinguishing an empty database from a filter query with zero matches.
+  - Accessible modal dialogs with keyboard trap support, `aria-modal="true"`, and ESC key handling.
 
-### System Endpoints
+### 2. Backend REST API Endpoints (`http://localhost:3000`)
+All responses adhere to standardized JSON envelopes:
+- **Success Envelope**: `{ "success": true, "data": <object | array> }`
+- **Error Envelope**: `{ "success": false, "error": { "code": "<ERROR_CODE>", "message": "<description>" } }`
+
+#### System Endpoints
 | Method | Endpoint | Description | Expected Status |
 |---|---|---|:---:|
 | `GET` | `/` | Service root and metadata | `200 OK` |
-| `GET` | `/health` | Health check with server uptime and ISO timestamp | `200 OK` |
+| `GET` | `/health` | Server uptime and ISO timestamp | `200 OK` |
 
-### Test Items CRUD Endpoints (`/api/test-items`)
+#### Test Items CRUD Endpoints (`/api/test-items`)
 | Method | Endpoint | Description | Expected Status |
 |---|---|---|:---:|
 | `GET` | `/api/test-items` | Retrieve all test items sorted by `created_at` descending | `200 OK` |
-| `GET` | `/api/test-items/:id` | Retrieve single test item by integer ID | `200 OK` / `404 Not Found` / `400 Bad Request` |
+| `GET` | `/api/test-items/:id` | Retrieve single test item by positive integer ID | `200 OK` / `404 Not Found` / `400 Bad Request` |
 | `POST` | `/api/test-items` | Create a new test item | `201 Created` / `400 Bad Request` |
-| `PUT` | `/api/test-items/:id` | Full strict update of an existing item | `200 OK` / `404 Not Found` / `400 Bad Request` |
-| `DELETE` | `/api/test-items/:id` | Delete an item by integer ID | `200 OK` / `404 Not Found` / `400 Bad Request` |
+| `PUT` | `/api/test-items/:id` | Strict full update of an existing item | `200 OK` / `404 Not Found` / `400 Bad Request` |
+| `DELETE` | `/api/test-items/:id` | Delete an item by positive integer ID | `200 OK` / `404 Not Found` / `400 Bad Request` |
 
-### Input Schema & Field Rules
-- `title` *(required)*: String, 1–255 characters, rejects whitespace-only values.
+#### Input Schema & Field Rules
+- `title` *(required)*: String, 1–255 characters, rejects whitespace-only strings.
 - `description` *(optional)*: String or `null`.
 - `status` *(optional on POST, required on PUT)*: Enum `['draft', 'in_progress', 'completed', 'archived']` (default: `'draft'`).
 - `complexity` *(optional on POST, required on PUT)*: Integer from `1` to `10` (default: `1`).
@@ -60,161 +89,161 @@ All responses follow standard JSON response envelopes:
 ## Installation & Setup
 
 ### Prerequisites
-- [Bun](https://bun.sh/) (v1.2+) installed on your system.
-- [Node.js](https://nodejs.org/) (v20.19+ or v22.12+).
-- MariaDB or MySQL running (e.g. via XAMPP).
+- [Bun](https://bun.sh/) (v1.2+) installed.
+- [Node.js](https://nodejs.org/) (v20.19+ or v22.12+) installed.
+- MariaDB or MySQL running locally (e.g., via XAMPP or native service on port `3306`).
 
-### 1. Database Configuration (MariaDB / XAMPP)
-1. Start the **MySQL** module in XAMPP Control Panel (or start your local MariaDB service).
-2. Create the database:
+---
+
+### Step 1: Database Configuration
+1. Start the **MySQL / MariaDB** service (e.g., in XAMPP Control Panel).
+2. Create the target database:
    ```sql
    CREATE DATABASE qa_playground_db;
    ```
-3. Copy the environment template (from the repository root):
+3. Copy the environment template (from project root):
    ```bash
    cp backend/.env.example backend/.env
    ```
-4. Review the values in `backend/.env`. The template (`backend/.env.example`) contains:
+4. Configure `backend/.env`:
    ```env
-   # Application
    PORT=3000
    NODE_ENV=development
-
-   # MySQL Database
    DB_HOST=localhost
    DB_PORT=3306
    DB_USER=root
-   DB_PASSWORD=your_mysql_password
+   DB_PASSWORD=
    DB_NAME=qa_playground_db
    ```
-   - `DB_PASSWORD=your_mysql_password` is a placeholder, not a real credential. Replace it with your own local database password.
-   - **Default XAMPP installation:** MariaDB uses user `root` with an **empty password**, so set `DB_PASSWORD=` (leave the value empty).
-   - Keep real credentials only in `backend/.env`; this file is ignored by Git and must not be committed.
-5. Change into the backend directory **once**. All remaining commands in this README (database, server, tests, typecheck, build) are run from `backend/`:
+   *Note: For standard default XAMPP setups, the `root` user has an empty password (`DB_PASSWORD=`).*
+
+5. Push or migrate database schema:
    ```bash
    cd backend
-   ```
-6. Apply the database schema via Drizzle:
-   ```bash
-   # Option A: Push schema directly to database (convenient for rapid development)
    bun run db:push
-
-   # Option B: Run generated migration files from the drizzle/ folder
-   bun run db:migrate
-   ```
-   *Note: Both approaches are supported in the project scripts. Use `db:push` to synchronize schema definitions directly, or `db:migrate` if executing pre-generated SQL migration files.*
-
-### 2. Running the Backend
-Run from the `backend/` directory (if you opened a new terminal at the repository root, run `cd backend` first):
-```bash
-# Run development server with live reload
-bun run dev
-
-# Or run production server
-bun run start
-```
-The backend server will be available at `http://localhost:3000`.
-
-### 3. Frontend Setup & Development Server
-The frontend is an independent React + Vite + TypeScript application located in the `frontend/` directory.
-
-1. Install frontend dependencies (from the repository root):
-   ```bash
-   cd frontend
-   bun install
-   ```
-2. Start the frontend development server:
-   ```bash
-   bun run dev
-   ```
-   The frontend will be available at `http://localhost:5173`.
-
-3. **Vite Development Proxy**:
-   The frontend development server includes a proxy configuration in `frontend/vite.config.ts`. Any requests to:
-   - `/health` &rarr; forwarded to backend at `http://localhost:3000/health`
-   - `/api/*` &rarr; forwarded to backend at `http://localhost:3000/api/*`
-
-   This allows seamless API communication without requiring CORS changes on the backend. Ensure the backend server (`http://localhost:3000`) is running when testing API features.
-
-4. **Frontend Quality & Build Scripts**:
-   Run from the `frontend/` directory:
-   ```bash
-   # Run Oxlint linter
-   bun run lint
-
-   # Run TypeScript check and Vite production build
-   bun run build
+   # or: bun run db:migrate
    ```
 
 ---
 
-## Running Automated Tests
+### Step 2: Running Backend & Frontend
 
-All test, typecheck, and build commands are executed from the `backend/` directory (run `cd backend` first only if you are at the repository root):
-
+#### Terminal 1 — Start Backend Server
 ```bash
+cd backend
+bun run dev
+```
+The API server will run at `http://localhost:3000`.
+
+#### Terminal 2 — Start Frontend Application
+```bash
+cd frontend
+bun install
+bun run dev
+```
+The frontend application will run at `http://localhost:5173`.
+
+> **Vite Proxy Note:**
+> The Vite development server automatically proxies `/api/*` and `/health` requests to `http://localhost:3000`, enabling frictionless development without CORS issues.
+
+---
+
+## Running Quality Assurance & Test Suites
+
+### 1. Backend Integration Tests & Code Quality
+From the `backend/` directory:
+```bash
+# Run automated integration test suite
 bun test
+
+# Run TypeScript type checking
 bun run typecheck
+
+# Run production build
 bun run build
 ```
 
-### Verified Backend Test Results
-- **`bun test`**: **21 passing tests, 143 assertions, 0 failures** across CRUD suites (positive, boundary, validation, and negative branches).
-- **`bun run typecheck`**: **Passed** (`tsc --noEmit` exits with 0 errors).
-- **`bun run build`**: **Passed** (TypeScript compilation and Bun bundling to `./dist` succeeds).
+### 2. Frontend Linting & Build Verification
+From the `frontend/` directory:
+```bash
+# Run Oxlint static analysis
+bun run lint
+
+# Run TypeScript check and production bundle build
+bun run build
+```
+
+### 3. Cypress Automated E2E UI Tests
+The Cypress automated suite tests the user interface end-to-end against live backend and frontend servers.
+
+> **Prerequisite:** Ensure both the backend (`http://localhost:3000`) and frontend (`http://localhost:5173`) are running before launching Cypress.
+
+From the `frontend/` directory:
+```bash
+# Run Cypress tests headlessly in terminal
+bun run cypress:run
+
+# Or launch the interactive Cypress Test Runner GUI
+bun run cypress:open
+```
+
+### 4. Postman API Test Automation
+1. Launch **Postman**.
+2. Click **Import** and select:
+   - Collection: [`postman/QA_Portfolio_Playground.postman_collection.json`](postman/QA_Portfolio_Playground.postman_collection.json)
+   - Environment: [`postman/QA_Portfolio_Playground.postman_environment.json`](postman/QA_Portfolio_Playground.postman_environment.json)
+3. Select the environment: **QA Portfolio Playground - Local**.
+4. Open **Collection Runner** on `QA Portfolio & Testing Playground`.
+5. Execute the entire collection in sequential order (`00 - Setup` through `06 - Cleanup`).
 
 ---
 
-## Postman Collection & Test Automation
+## Test Coverage & Verified Results Summary
 
-The repository provides a modular, self-contained Postman collection with dynamic lifecycle execution.
+### Layer 1: Automated Backend Integration Suite (`bun:test`)
+- **Spec File**: `backend/tests/test-items.test.ts`
+- **Result**: **21 passing tests, 143 assertions, 0 failures**
+- **Coverage**: System metadata, health uptime, full CRUD lifecycle, boundary checks (min/max complexity, 255-char title limit), invalid types, malformed JSON body handling, and 404 responses.
 
-### Files Location
-- Collection: [`postman/QA_Portfolio_Playground.postman_collection.json`](postman/QA_Portfolio_Playground.postman_collection.json)
-- Environment: [`postman/QA_Portfolio_Playground.postman_environment.json`](postman/QA_Portfolio_Playground.postman_environment.json)
+### Layer 2: Postman API Lifecycle Suite
+- **Collection**: `postman/QA_Portfolio_Playground.postman_collection.json`
+- **Result**: **31 requests, 80 passed assertions, 0 failures**
+- **Architecture**:
+  - `00 - Setup`: Dynamically generates and verifies a non-existent candidate ID to prevent hardcoded 404 testing.
+  - `01 - Health & Meta`: Service health and timestamp schema verification.
+  - `02 - POST`: Boundary testing, default value population, and runtime variable capture.
+  - `03 - GET`: Detail retrieval, array ordering, and parameter validation.
+  - `04 - PUT`: Strict full payload update and timestamp consistency checks.
+  - `05 - DELETE`: Targeted deletion and subsequent 404 confirmation.
+  - `06 - Cleanup`: Automated teardown of secondary test records (`minimalItemId`, `nullDescItemId`).
 
-### How to Import & Run
-1. Open **Postman**.
-2. Click **Import** (top left) and select both files from the `postman/` directory.
-3. Select the active environment: **QA Portfolio Playground - Local**.
-4. Verify that `baseUrl` is set to `http://localhost:3000`.
-5. Open **Runner** (Collection Runner) on `QA Portfolio & Testing Playground`.
-6. Run the collection in folder order (`00 - Setup` through `06 - Cleanup`).
+### Layer 3: Cypress Automated E2E Browser Suite
+- **Spec File**: `frontend/cypress/e2e/test-items.cy.ts`
+- **Result**: **18 passing tests, 0 failures** (verified on Cypress v16.2.0)
+- **Scenarios Covered**:
+  1. Dashboard overview and metrics bar rendering.
+  2. Test Items catalog loading and display from API.
+  3. Real-time, case-insensitive title search.
+  4. Status filter functionality.
+  5. Alphabetical title sorting (A–Z).
+  6. Item creation with unique timestamped prefix and automatic self-cleanup.
+  7. Item editing and persistence verification with self-cleanup.
+  8. Delete confirmation modal workflow and deletion verification.
+  9. Non-matching search query empty state and "Clear Search" button.
+  10. "Reset Filters" action restoring default search, filter, and sorting states.
+  11. Create form validation for empty or whitespace-only title (blocks submission).
+  12. Create form boundary validation (255-character title and complexity 10) with self-cleanup.
+  13. Edit form validation for whitespace-only title (blocks submission).
+  14. Isolated error handling: API 500 response on GET triggers error banner and retry button.
+  15. Isolated error handling: API 500 response on POST displays error message within modal.
+  16. Isolated error handling: API 404 response on DELETE displays error message within modal.
+  17. Cancel action on Delete modal safely aborts deletion without sending DELETE request.
+  18. Filter mismatch consistency: item count chips and empty states remain synchronised.
 
-### Postman Test Structure & Folders
-1. **00 - Setup**: Dynamically resolves and verifies a non-existent ID (`nonExistentId`) ensuring 404 tests are deterministic and never hardcoded.
-2. **01 - Health & Meta**: Root and uptime sanity checks.
-3. **02 - POST Test Items**: Full boundary and negative tests (missing title, whitespace-only title, length > 255, invalid status, complexity out of bounds, type mismatches, malformed JSON). Sets dynamic variables `activeItemId`, `activeCreatedAt`, and `activeUpdatedAt`.
-4. **03 - GET Test Items**: List verification, detail retrieval by active ID, 404 validation, and parameter type validation.
-5. **04 - PUT Test Items**: Strict full update test, timestamp consistency and plausibility assertions, 404 checks, and boundary payload checks.
-6. **05 - DELETE Test Items**: Deletion of the active record, confirmation of 200 response, verification of subsequent 404, and duplicate deletion handling.
-7. **06 - Cleanup**: Targeted teardown deleting only test records created by secondary POST requests (`minimalItemId`, `nullDescItemId`).
-
----
-
-## Test Execution Summary
-
-### 1. Automated Backend Tests (`bun:test`)
-- **Suite**: `tests/test-items.test.ts`
-- **Result**: **21 passed, 0 failed** (143 `expect()` assertions executed)
-- **Status**: Verified locally with `bun test`, `bun run typecheck`, and `bun run build`.
-
-### 2. Postman Collection Runner
-A complete execution of the collection in Postman Collection Runner against the local development environment yielded:
-- **Total Requests**: 31 requests across 7 modular folders.
-- **Declared Tests in Collection**: 84 `pm.test()` blocks.
-- **Last Verified Successful Execution**: **80 passed, 0 failed**.
-- **Explanation on Assertion Count**: The collection contains 84 declared `pm.test()` blocks. During a standard successful clean run, exactly **80 assertions** are executed and pass. The remaining 4 assertions reside inside conditional defensive branches (such as fallback error handlers in `00 - Setup` when a candidate ID cannot be verified, or fallback assertions in `06 - Cleanup` when no secondary records were created) and are intentionally bypassed when all requests succeed.
-
-> **Note on Test Results:**
-> These figures reflect verified runs executed in a local development environment (Windows, Bun runtime, local MariaDB). They demonstrate that all assertions and contract verifications passed successfully in that environment, but do not serve as an absolute guarantee for distributed, concurrent, or multi-tenant production scenarios.
-
----
-
-## Test Documentation
-
-- [Test Plan](docs/TEST_PLAN.md) — QA strategy, scope, approach, environment, entry/exit criteria, risks, and deliverables.
-- [Manual Test Cases](docs/MANUAL_TEST_CASES.md) — 42 executable manual API test cases with setup/teardown procedures and a traceability matrix.
+### Layer 4: Designed Manual Test Cases
+- **Document**: [`docs/MANUAL_TEST_CASES.md`](docs/MANUAL_TEST_CASES.md)
+- **Status**: **42 Designed Test Cases (Status: `Not Run`)**
+- **Scope**: Step-by-step procedures covering exploratory API testing, boundary value analysis, equivalence partitioning, and manual lifecycle validation with explicit setup and teardown guidelines.
 
 ---
 
@@ -224,54 +253,62 @@ A complete execution of the collection in Postman Collection Runner against the 
 .
 ├── backend/
 │   ├── drizzle/
-│   │   ├── 0000_lonely_doctor_octopus.sql  # Generated SQL migration (used by db:migrate)
-│   │   └── meta/                           # Drizzle migration journal & schema snapshot
+│   │   ├── 0000_lonely_doctor_octopus.sql  # SQL migration file
+│   │   └── meta/                           # Drizzle schema snapshot & journal
 │   ├── src/
 │   │   ├── db/
-│   │   │   ├── index.ts        # Database connection pool & Drizzle initialization
-│   │   │   └── schema.ts       # Table schema definition & types (testItems)
-│   │   ├── app.ts              # Route definitions, request handlers & error handling
-│   │   └── index.ts            # Application entrypoint & HTTP server listener
+│   │   │   ├── index.ts        # Database connection pool & Drizzle client
+│   │   │   └── schema.ts       # Table schema definition (testItems)
+│   │   ├── app.ts              # Route handlers, validations & error envelopes
+│   │   └── index.ts            # Application entrypoint & HTTP server
 │   ├── tests/
-│   │   └── test-items.test.ts  # Automated test suite (bun:test)
-│   ├── .env.example            # Environment variables template
-│   ├── .gitignore              # Backend-specific ignore rules
-│   ├── bun.lock                # Dependency lockfile
+│   │   └── test-items.test.ts  # Backend integration test suite (bun:test)
+│   ├── .env.example            # Environment template
+│   ├── .gitignore              # Backend ignore rules
+│   ├── bun.lock                # Backend lockfile
 │   ├── drizzle.config.ts       # Drizzle ORM configuration
-│   ├── package.json            # Scripts & dependencies
-│   └── tsconfig.json           # TypeScript configuration
+│   ├── package.json            # Backend scripts & dependencies
+│   └── tsconfig.json           # Backend TypeScript configuration
 ├── docs/
-│   ├── TEST_PLAN.md            # QA test plan
-│   └── MANUAL_TEST_CASES.md    # Manual test cases & traceability matrix
+│   ├── TEST_PLAN.md            # Comprehensive QA Test Plan (strategy, scope, criteria)
+│   └── MANUAL_TEST_CASES.md    # 42 manual test cases & traceability matrix
 ├── frontend/
+│   ├── cypress/
+│   │   ├── e2e/
+│   │   │   └── test-items.cy.ts # Cypress E2E automated test suite (18 scenarios)
+│   │   ├── fixtures/           # Cypress mock fixtures
+│   │   └── support/
+│   │       ├── commands.ts     # Custom Cypress commands
+│   │       └── e2e.ts          # Cypress support configuration
 │   ├── public/
-│   │   └── favicon.svg         # Application favicon
+│   │   └── favicon.svg         # Application icon
 │   ├── src/
-│   │   ├── App.tsx             # Main placeholder component
-│   │   ├── index.css           # Tailwind CSS v4 import
+│   │   ├── App.tsx             # Main dashboard, catalog, search, filter, sort & modals
+│   │   ├── index.css           # Tailwind CSS v4 styling rules
 │   │   └── main.tsx            # React application entrypoint
-│   ├── .gitignore              # Frontend-specific ignore rules
+│   ├── .gitignore              # Frontend ignore rules (screens, videos, dist ignored)
 │   ├── .oxlintrc.json          # Oxlint configuration
-│   ├── bun.lock                # Frontend dependency lockfile
+│   ├── bun.lock                # Frontend lockfile
+│   ├── cypress.config.ts       # Cypress configuration (baseUrl http://localhost:5173)
 │   ├── index.html              # HTML template
 │   ├── package.json            # Frontend scripts & dependencies
+│   ├── tsconfig.app.json       # Application TypeScript configuration
 │   ├── tsconfig.json           # Root TypeScript configuration
-│   ├── tsconfig.app.json       # App TypeScript configuration
 │   ├── tsconfig.node.json      # Node/Vite TypeScript configuration
-│   └── vite.config.ts          # Vite configuration with Tailwind & proxy
+│   └── vite.config.ts          # Vite configuration with Tailwind CSS & API proxy
 ├── postman/
-│   ├── QA_Portfolio_Playground.postman_collection.json   # Postman collection with test scripts
-│   └── QA_Portfolio_Playground.postman_environment.json  # Environment variables for local execution
+│   ├── QA_Portfolio_Playground.postman_collection.json   # 31 automated requests & assertions
+│   └── QA_Portfolio_Playground.postman_environment.json  # Environment variables for local runs
 ├── .gitignore
-└── README.md                   # Project documentation
+└── README.md                   # Project documentation & QA report
 ```
 
 ---
 
-## Known Scope & Current Limitations
+## Known Scope & Architectural Decisions
 
-This playground is intentionally scoped to focus on API quality assurance, contract validation, and lifecycle testing:
-- **No Authentication / Authorization**: Endpoints are currently public and do not implement JWT or session-based access control.
-- **No Pagination / Filtering on GET**: `GET /api/test-items` returns all rows sorted by descending creation time without `limit` or `offset` parameters.
-- **Single-Table Playground**: Designed around the `test_items` entity for focused CRUD quality verification rather than complex multi-table relational joins.
-- **Local Environment Scope**: Database and timestamps are tuned for single-node local execution.
+This playground is intentionally designed for Quality Assurance demonstration:
+- **Authentication & Authorization**: Endpoints are public to focus on contract validation, functional verification, and UI automation without token management overhead.
+- **Client-Side Search, Filter & Sort**: Search, filtering, and sorting are executed client-side on data retrieved from `GET /api/test-items`, decoupling UI responsiveness from backend query parameters.
+- **Single-Table Playground**: Built around the `test_items` entity to provide clear, deterministic CRUD validation without multi-table cascade side-effects.
+- **Strict Test Isolation**: Every automated test (Cypress and Postman) dynamically generates isolated records and performs deterministic cleanup to maintain database integrity across repeated test runs.

@@ -1,6 +1,6 @@
 # QA Manual Test Cases — QA Portfolio & Testing Playground
 
-**Document Version:** 1.2\
+**Document Version:** 1.3\
 **Status:** Ready for Review\
 **Author:** QA Engineering Team\
 **System Under Test (SUT):** QA Portfolio & Testing Playground REST API (`http://localhost:3000`)
@@ -20,6 +20,9 @@ This document contains a structured set of **42 manual test cases** designed to 
 | **DELETE Endpoints** | `TC-DEL` | 7 | `DELETE /api/test-items/:id` |
 | **Integration / Lifecycle** | `TC-INT` | 1 | Full E2E CRUD Flow |
 | **TOTAL** | | **42** | |
+
+> **Note on Test Execution Distinction:**
+> These 42 manual test cases are distinct from the automated regression suites (`bun:test` 21 integration tests, Postman 80 passing assertions, and Cypress 18 passing E2E browser tests). All manual test cases in this catalog remain tracked with an initial status of **`Not Run`** until formally executed during structured manual exploratory cycles.
 
 ---
 
