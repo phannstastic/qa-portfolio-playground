@@ -1,4 +1,26 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+
+export type TestItemStatus = 'draft' | 'in_progress' | 'completed' | 'archived'
+
+export interface TestItem {
+  id: number
+  title: string
+  description: string | null
+  status: TestItemStatus
+  complexity: number
+  isAutomated: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+interface ApiResponse<T> {
+  success: boolean
+  data?: T
+  error?: {
+    code: string
+    message: string
+  }
+}
 
 interface SummaryCard {
   id: string
@@ -22,7 +44,7 @@ interface RecentActivity {
 type NavigationTab = 'dashboard' | 'test-items' | 'api-playground'
 
 /**
- * Centrally defined dummy metrics and activities.
+ * Centrally defined dummy metrics and activities for Dashboard overview.
  * Clearly marked as demonstration data (not connected to live backend/database).
  */
 const SUMMARY_METRICS: SummaryCard[] = [
@@ -91,13 +113,57 @@ const DEMO_ACTIVITIES: RecentActivity[] = [
   },
 ]
 
+function getStatusBadge(status: TestItemStatus) {
+  switch (status) {
+    case 'completed':
+      return {
+        label: 'Completed',
+        classes: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+      }
+    case 'in_progress':
+      return {
+        label: 'In Progress',
+        classes: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+      }
+    case 'archived':
+      return {
+        label: 'Archived',
+        classes: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+      }
+    case 'draft':
+    default:
+      return {
+        label: 'Draft',
+        classes: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+      }
+  }
+}
+
+function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—'
+  const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return dateStr
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavigationTab>('dashboard')
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
+  // Test Items live API state
+  const [testItems, setTestItems] = useState<TestItem[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [error, setError] = useState<string | null>(null)
+
   const navItems: { id: NavigationTab; label: string; badge?: string }[] = [
     { id: 'dashboard', label: 'Dashboard' },
-    { id: 'test-items', label: 'Test Items', badge: 'Placeholder' },
+    { id: 'test-items', label: 'Test Items' },
     { id: 'api-playground', label: 'API Playground', badge: 'Placeholder' },
   ]
 
@@ -105,6 +171,64 @@ export default function App() {
     setActiveTab(tabId)
     setIsMobileMenuOpen(false)
   }
+
+  // Fetch test items from live backend API
+  const fetchTestItems = useCallback(async (signal?: AbortSignal) => {
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const res = await fetch('/api/test-items', { signal })
+
+      // Handle non-2xx HTTP responses
+      if (!res.ok) {
+        let errorMsg = `Server error (HTTP ${res.status})`
+        try {
+          const errorJson = (await res.json()) as ApiResponse<unknown>
+          if (errorJson?.error?.message) {
+            errorMsg = errorJson.error.message
+          }
+        } catch {
+          // Response body was not JSON; keep status-based fallback
+        }
+        throw new Error(errorMsg)
+      }
+
+      // Parse JSON response envelope
+      const json = (await res.json()) as ApiResponse<TestItem[]>
+      if (!json.success || !Array.isArray(json.data)) {
+        const errorDetail = json.error?.message || 'Invalid API response format received from server.'
+        throw new Error(errorDetail)
+      }
+
+      setTestItems(json.data)
+    } catch (err: unknown) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
+        return // Component unmounted or superseded request; ignore safely
+      }
+      const message =
+        err instanceof Error ? err.message : 'An unexpected error occurred while fetching test items.'
+      setError(message)
+    } finally {
+      if (!signal?.aborted) {
+        setIsLoading(false)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'test-items') {
+      const controller = new AbortController()
+      queueMicrotask(() => {
+        if (!controller.signal.aborted) {
+          void fetchTestItems(controller.signal)
+        }
+      })
+      return () => {
+        controller.abort()
+      }
+    }
+  }, [activeTab, fetchTestItems])
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row antialiased">
@@ -212,7 +336,7 @@ export default function App() {
             </div>
           </div>
           <p className="text-[10px] text-center text-slate-400">
-            QA Portfolio Playground &bull; Task 9.2
+            QA Portfolio Playground &bull; Task 9.3
           </p>
         </div>
       </aside>
@@ -250,20 +374,31 @@ export default function App() {
                 {activeTab === 'dashboard'
                   ? 'Dashboard Overview'
                   : activeTab === 'test-items'
-                    ? 'Test Items (Placeholder)'
+                    ? 'Test Items Catalog'
                     : 'API Playground (Placeholder)'}
               </h2>
               <p className="text-xs text-slate-400 hidden sm:block">
-                Software Quality Assurance Workbench
+                {activeTab === 'dashboard'
+                  ? 'Software Quality Assurance Workbench'
+                  : activeTab === 'test-items'
+                    ? 'Backend API Test Cases & Verifications'
+                    : 'Interactive API Request Explorer'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-              Demo Data Mode
-            </span>
+            {activeTab === 'test-items' ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Live API Mode
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+                {activeTab === 'dashboard' ? 'Demo Data Mode' : 'Placeholder'}
+              </span>
+            )}
           </div>
         </header>
 
@@ -314,7 +449,7 @@ export default function App() {
                   </svg>
                   <span>
                     <strong>Notice:</strong> All metrics, execution statuses, and recent activity
-                    entries below are static demonstration fixtures defined for initial UI layout
+                    entries on this dashboard overview are static demonstration fixtures defined for initial UI layout
                     verification, and do not reflect live database queries.
                   </span>
                 </div>
@@ -467,8 +602,291 @@ export default function App() {
                 </section>
               </div>
             </>
+          ) : activeTab === 'test-items' ? (
+            /* Live Test Items Catalog Section */
+            <section aria-labelledby="items-heading" className="space-y-5">
+              {/* Header Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+                    <h3 id="items-heading" className="text-lg font-bold text-white tracking-tight">
+                      Test Items Catalog
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                      {testItems.length} {testItems.length === 1 ? 'item' : 'items'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Live test cases fetched directly from <code className="text-indigo-300 font-mono">GET /api/test-items</code>.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => fetchTestItems()}
+                    disabled={isLoading}
+                    aria-label="Refresh test items"
+                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700/80 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                  >
+                    <svg
+                      className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin text-indigo-400' : 'text-slate-400'}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
+                      />
+                    </svg>
+                    <span>{isLoading ? 'Refreshing...' : 'Refresh Data'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Loading State */}
+              {isLoading && testItems.length === 0 && (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3 shadow-sm">
+                  <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-indigo-500/10 text-indigo-400 mx-auto">
+                    <svg
+                      className="h-6 w-6 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
+                      />
+                    </svg>
+                  </div>
+                  <h4 className="text-sm font-semibold text-white">Loading Test Items</h4>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Retrieving test item records from the database via Vite proxy...
+                  </p>
+                </div>
+              )}
+
+              {/* Error State */}
+              {error && !isLoading && (
+                <div className="bg-red-950/30 border border-red-500/30 rounded-2xl p-8 text-center space-y-3.5 shadow-sm">
+                  <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-red-500/10 text-red-400 mx-auto">
+                    <svg
+                      className="h-6 w-6"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                      />
+                    </svg>
+                  </div>
+                  <h4 className="text-sm font-semibold text-white">Unable to Fetch Test Items</h4>
+                  <p className="text-xs text-red-300/90 max-w-md mx-auto leading-relaxed">
+                    {error}
+                  </p>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => fetchTestItems()}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium bg-red-600 text-white hover:bg-red-500 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                    >
+                      Retry Request
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Empty State */}
+              {!isLoading && !error && testItems.length === 0 && (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3 shadow-sm">
+                  <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-slate-800 text-slate-400 mx-auto">
+                    <svg
+                      className="h-6 w-6"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"
+                      />
+                    </svg>
+                  </div>
+                  <h4 className="text-sm font-semibold text-white">No Test Items Found</h4>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+                    The database currently has no records in the catalog. You can create records
+                    via Postman collections or backend test suites.
+                  </p>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => fetchTestItems()}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700/80 hover:text-white transition-colors"
+                    >
+                      Refresh Status
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Data Table: Desktop & Tablet View */}
+              {!error && testItems.length > 0 && (
+                <>
+                  <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-950/70 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800 text-[11px]">
+                          <tr>
+                            <th scope="col" className="py-3.5 px-4 w-16">
+                              ID
+                            </th>
+                            <th scope="col" className="py-3.5 px-4">
+                              Title
+                            </th>
+                            <th scope="col" className="py-3.5 px-4 max-w-xs">
+                              Description
+                            </th>
+                            <th scope="col" className="py-3.5 px-4">
+                              Status
+                            </th>
+                            <th scope="col" className="py-3.5 px-4 text-center w-24">
+                              Complexity
+                            </th>
+                            <th scope="col" className="py-3.5 px-4 text-center w-28">
+                              Automation
+                            </th>
+                            <th scope="col" className="py-3.5 px-4 text-right">
+                              Created At
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/70 text-slate-300">
+                          {testItems.map((item) => {
+                            const badge = getStatusBadge(item.status)
+                            return (
+                              <tr
+                                key={item.id}
+                                className="hover:bg-slate-800/40 transition-colors"
+                              >
+                                <td className="py-3.5 px-4 font-mono text-slate-400">
+                                  #{item.id}
+                                </td>
+                                <td className="py-3.5 px-4 font-semibold text-white">
+                                  {item.title}
+                                </td>
+                                <td className="py-3.5 px-4 max-w-xs text-slate-400">
+                                  {item.description ? (
+                                    <span className="line-clamp-2">{item.description}</span>
+                                  ) : (
+                                    <span className="italic text-slate-600">—</span>
+                                  )}
+                                </td>
+                                <td className="py-3.5 px-4 whitespace-nowrap">
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${badge.classes}`}
+                                  >
+                                    {badge.label}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700/60 font-semibold">
+                                    {item.complexity} / 10
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                                  {item.isAutomated ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                      Automated
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60">
+                                      Manual
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-3.5 px-4 text-right text-slate-400 whitespace-nowrap font-mono text-[11px]">
+                                  {formatDate(item.createdAt)}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Card View: Mobile Only (< md) */}
+                  <div className="md:hidden space-y-3">
+                    {testItems.map((item) => {
+                      const badge = getStatusBadge(item.status)
+                      return (
+                        <article
+                          key={item.id}
+                          className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3 shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] font-mono text-slate-400">
+                                #{item.id}
+                              </span>
+                              <h4 className="text-sm font-semibold text-white leading-tight">
+                                {item.title}
+                              </h4>
+                            </div>
+                            <span
+                              className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${badge.classes}`}
+                            >
+                              {badge.label}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-slate-400 leading-relaxed">
+                            {item.description ? (
+                              item.description
+                            ) : (
+                              <span className="italic text-slate-600">No description provided</span>
+                            )}
+                          </p>
+
+                          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 font-medium">
+                                Complexity: {item.complexity}/10
+                              </span>
+                              {item.isAutomated ? (
+                                <span className="text-emerald-400 font-medium">&bull; Automated</span>
+                              ) : (
+                                <span className="text-slate-400">&bull; Manual</span>
+                              )}
+                            </div>
+                            <span className="font-mono text-[10px]">{formatDate(item.createdAt)}</span>
+                          </div>
+                        </article>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </section>
           ) : (
-            /* Navigation Placeholder View for Test Items and API Playground */
+            /* Navigation Placeholder View for API Playground */
             <section
               aria-labelledby="placeholder-heading"
               className="bg-slate-900 border border-slate-800 rounded-2xl p-8 sm:p-12 text-center space-y-4 max-w-xl mx-auto my-8 shadow-sm"
@@ -477,12 +895,11 @@ export default function App() {
                 #
               </div>
               <h3 id="placeholder-heading" className="text-xl font-bold text-white">
-                {activeTab === 'test-items' ? 'Test Items Catalog' : 'Interactive API Playground'}
+                Interactive API Playground
               </h3>
               <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
-                This section is reserved for future implementation tasks (e.g. CRUD test item
-                management and live request playground). It is currently rendered as an interface
-                placeholder.
+                This section is reserved for interactive API testing and live request exploration.
+                It is currently rendered as an interface placeholder.
               </p>
               <button
                 type="button"
