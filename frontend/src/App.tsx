@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 export type TestItemStatus = 'draft' | 'in_progress' | 'completed' | 'archived'
+export type StatusFilter = 'all' | TestItemStatus
+export type SortOption =
+  | 'newest'
+  | 'oldest'
+  | 'title-asc'
+  | 'title-desc'
+  | 'complexity-asc'
+  | 'complexity-desc'
 
 export interface TestItem {
   id: number
@@ -206,6 +214,54 @@ export default function App() {
   const [deletingItem, setDeletingItem] = useState<TestItem | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // Search, Filter, and Sorting State
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [sortBy, setSortBy] = useState<SortOption>('newest')
+
+  // Memoized search, status filter, and sorted test items
+  const filteredAndSortedItems = useMemo(() => {
+    let result = [...testItems]
+
+    // Search filter: title, case-insensitive, trimmed
+    const query = searchQuery.trim().toLowerCase()
+    if (query) {
+      result = result.filter((item) => item.title.toLowerCase().includes(query))
+    }
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      result = result.filter((item) => item.status === statusFilter)
+    }
+
+    // Sorting without mutating original state
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'oldest': {
+          const timeA = new Date(a.createdAt).getTime() || 0
+          const timeB = new Date(b.createdAt).getTime() || 0
+          return timeA - timeB
+        }
+        case 'title-asc':
+          return a.title.localeCompare(b.title)
+        case 'title-desc':
+          return b.title.localeCompare(a.title)
+        case 'complexity-asc':
+          return a.complexity - b.complexity
+        case 'complexity-desc':
+          return b.complexity - a.complexity
+        case 'newest':
+        default: {
+          const timeA = new Date(a.createdAt).getTime() || 0
+          const timeB = new Date(b.createdAt).getTime() || 0
+          return timeB - timeA
+        }
+      }
+    })
+
+    return result
+  }, [testItems, searchQuery, statusFilter, sortBy])
 
   const navItems: { id: NavigationTab; label: string; badge?: string }[] = [
     { id: 'dashboard', label: 'Dashboard' },
@@ -977,7 +1033,9 @@ export default function App() {
                       Test Items Catalog
                     </h3>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                      {testItems.length} {testItems.length === 1 ? 'item' : 'items'}
+                      {searchQuery.trim() || statusFilter !== 'all'
+                        ? `${filteredAndSortedItems.length} of ${testItems.length} items`
+                        : `${testItems.length} ${testItems.length === 1 ? 'item' : 'items'}`}
                     </span>
                   </div>
                   <p className="text-xs text-slate-400">
@@ -1074,6 +1132,118 @@ export default function App() {
                 </div>
               )}
 
+              {/* Search, Filter, and Sort Control Toolbar */}
+              {!error && testItems.length > 0 && (
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                  {/* Search Input */}
+                  <div className="relative flex-1 min-w-[220px]">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+                        />
+                      </svg>
+                    </div>
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search test items by title..."
+                      aria-label="Search test items by title"
+                      className="w-full pl-9 pr-9 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white placeholder-slate-500 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        aria-label="Clear search query"
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition-colors"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth={2}
+                          stroke="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter and Sort Dropdowns */}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Status Filter */}
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="filter-status" className="text-xs text-slate-400 whitespace-nowrap shrink-0">
+                        Status:
+                      </label>
+                      <select
+                        id="filter-status"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                        aria-label="Filter by status"
+                        className="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      >
+                        <option value="all">All Statuses</option>
+                        <option value="draft">Draft</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="archived">Archived</option>
+                      </select>
+                    </div>
+
+                    {/* Sort Dropdown */}
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="sort-by" className="text-xs text-slate-400 whitespace-nowrap shrink-0">
+                        Sort by:
+                      </label>
+                      <select
+                        id="sort-by"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as SortOption)}
+                        aria-label="Sort test items"
+                        className="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      >
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                        <option value="title-asc">Title A–Z</option>
+                        <option value="title-desc">Title Z–A</option>
+                        <option value="complexity-asc">Complexity Low–High</option>
+                        <option value="complexity-desc">Complexity High–Low</option>
+                      </select>
+                    </div>
+
+                    {/* Reset button when any filter or non-default sort is active */}
+                    {(searchQuery.trim() !== '' || statusFilter !== 'all' || sortBy !== 'newest') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchQuery('')
+                          setStatusFilter('all')
+                          setSortBy('newest')
+                        }}
+                        aria-label="Reset all search, filter, and sorting"
+                        className="px-3 py-2 rounded-xl text-xs font-medium text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 border border-indigo-500/20 transition-colors whitespace-nowrap"
+                      >
+                        Reset Filters
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Loading State */}
               {isLoading && testItems.length === 0 && (
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3 shadow-sm">
@@ -1135,7 +1305,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* Empty State */}
+              {/* Empty State: Database has no items */}
               {!isLoading && !error && testItems.length === 0 && (
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3 shadow-sm">
                   <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-slate-800 text-slate-400 mx-auto">
@@ -1171,8 +1341,56 @@ export default function App() {
                 </div>
               )}
 
+              {/* Empty State: No results matching search and filter */}
+              {!isLoading && !error && testItems.length > 0 && filteredAndSortedItems.length === 0 && (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3.5 shadow-sm">
+                  <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-slate-800 text-slate-400 mx-auto">
+                    <svg
+                      className="h-6 w-6"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+                      />
+                    </svg>
+                  </div>
+                  <h4 className="text-sm font-semibold text-white">No Matching Test Items</h4>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+                    No items matched your search query{' '}
+                    {searchQuery.trim() && (
+                      <code className="text-indigo-300 font-mono">"{searchQuery.trim()}"</code>
+                    )}
+                    {searchQuery.trim() && statusFilter !== 'all' && ' with status '}
+                    {statusFilter !== 'all' && (
+                      <span className="font-semibold text-slate-200 capitalize">
+                        {statusFilter.replace('_', ' ')}
+                      </span>
+                    )}
+                    . Try adjusting your search term or filter options.
+                  </p>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('')
+                        setStatusFilter('all')
+                      }}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors shadow-sm"
+                    >
+                      Clear Search &amp; Filters
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Data Table: Desktop & Tablet View */}
-              {!error && testItems.length > 0 && (
+              {!error && testItems.length > 0 && filteredAndSortedItems.length > 0 && (
                 <>
                   <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-sm">
                     <div className="overflow-x-auto">
@@ -1206,7 +1424,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/70 text-slate-300">
-                          {testItems.map((item) => {
+                          {filteredAndSortedItems.map((item) => {
                             const badge = getStatusBadge(item.status)
                             return (
                               <tr
@@ -1311,7 +1529,7 @@ export default function App() {
 
                   {/* Card View: Mobile Only (< md) */}
                   <div className="md:hidden space-y-3">
-                    {testItems.map((item) => {
+                    {filteredAndSortedItems.map((item) => {
                       const badge = getStatusBadge(item.status)
                       return (
                         <article
