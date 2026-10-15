@@ -183,6 +183,30 @@ export default function App() {
     isAutomated: false,
   })
 
+  // Edit Modal & Form State
+  const [editingItem, setEditingItem] = useState<TestItem | null>(null)
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editFormErrors, setEditFormErrors] = useState<{ title?: string; complexity?: string }>({})
+  const [editFormData, setEditFormData] = useState<{
+    title: string
+    description: string
+    status: TestItemStatus
+    complexity: number | string
+    isAutomated: boolean
+  }>({
+    title: '',
+    description: '',
+    status: 'draft',
+    complexity: 1,
+    isAutomated: false,
+  })
+
+  // Delete Confirmation Modal State
+  const [deletingItem, setDeletingItem] = useState<TestItem | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
   const navItems: { id: NavigationTab; label: string; badge?: string }[] = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'test-items', label: 'Test Items' },
@@ -252,21 +276,30 @@ export default function App() {
     }
   }, [activeTab, fetchTestItems])
 
-  // Close modal on Escape key press
+  // Close modals on Escape key press
   useEffect(() => {
-    if (!isCreateModalOpen) return
-
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isSubmitting) {
-        setIsCreateModalOpen(false)
-        setFormErrors({})
-        setCreateError(null)
+      if (e.key === 'Escape') {
+        if (isCreateModalOpen && !isSubmitting) {
+          setIsCreateModalOpen(false)
+          setFormErrors({})
+          setCreateError(null)
+        } else if (editingItem && !isEditSubmitting) {
+          setEditingItem(null)
+          setEditFormErrors({})
+          setEditError(null)
+        } else if (deletingItem && !isDeleting) {
+          setDeletingItem(null)
+          setDeleteError(null)
+        }
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isCreateModalOpen, isSubmitting])
+    if (isCreateModalOpen || editingItem || deletingItem) {
+      window.addEventListener('keydown', handleKeyDown)
+      return () => window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isCreateModalOpen, isSubmitting, editingItem, isEditSubmitting, deletingItem, isDeleting])
 
   const handleOpenCreateModal = () => {
     setFormData({
@@ -381,6 +414,183 @@ export default function App() {
       setCreateError(message)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  // Edit Test Item Handlers
+  const handleOpenEditModal = (item: TestItem) => {
+    setEditingItem(item)
+    setEditFormData({
+      title: item.title,
+      description: item.description ?? '',
+      status: item.status,
+      complexity: item.complexity,
+      isAutomated: item.isAutomated,
+    })
+    setEditFormErrors({})
+    setEditError(null)
+  }
+
+  const handleCloseEditModal = () => {
+    if (isEditSubmitting) return
+    setEditingItem(null)
+    setEditFormErrors({})
+    setEditError(null)
+  }
+
+  const validateEditForm = () => {
+    const errors: { title?: string; complexity?: string } = {}
+    const trimmedTitle = editFormData.title.trim()
+
+    if (!trimmedTitle) {
+      errors.title = 'Title is required and must not be empty or whitespace only.'
+    } else if (trimmedTitle.length > 255) {
+      errors.title = 'Title must not exceed 255 characters.'
+    }
+
+    if (
+      editFormData.complexity === '' ||
+      editFormData.complexity === null ||
+      editFormData.complexity === undefined
+    ) {
+      errors.complexity = 'Complexity is required (1 to 10).'
+    } else {
+      const compNum = Number(editFormData.complexity)
+      if (!Number.isInteger(compNum) || compNum < 1 || compNum > 10) {
+        errors.complexity = 'Complexity must be an integer between 1 and 10.'
+      }
+    }
+
+    setEditFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingItem || isEditSubmitting) return
+
+    if (!validateEditForm()) {
+      return
+    }
+
+    setIsEditSubmitting(true)
+    setEditError(null)
+
+    try {
+      const payload = {
+        title: editFormData.title.trim(),
+        description: editFormData.description.trim() ? editFormData.description.trim() : null,
+        status: editFormData.status,
+        complexity: Number(editFormData.complexity),
+        isAutomated: Boolean(editFormData.isAutomated),
+      }
+
+      const res = await fetch(`/api/test-items/${editingItem.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      // Handle non-2xx HTTP responses
+      if (!res.ok) {
+        let errorMsg = `Server error (HTTP ${res.status})`
+        try {
+          const errorJson = (await res.json()) as ApiResponse<unknown>
+          if (errorJson?.error?.message) {
+            errorMsg = errorJson.error.message
+          }
+        } catch {
+          // Response body was not JSON; keep status-based fallback
+        }
+        throw new Error(errorMsg)
+      }
+
+      // Parse JSON response envelope and verify contract
+      const json = (await res.json()) as ApiResponse<TestItem>
+      if (res.status !== 200 || !json.success || !json.data || json.data.id !== editingItem.id) {
+        const errorDetail = json.error?.message || 'Invalid API response format received from server.'
+        throw new Error(errorDetail)
+      }
+
+      // Success flow
+      setSuccessMessage(`Test item #${json.data.id} ("${json.data.title}") was updated successfully!`)
+      setEditingItem(null)
+      setEditFormErrors({})
+      setEditError(null)
+
+      // Refresh test items catalog
+      void fetchTestItems()
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'An unexpected error occurred while updating test item.'
+      setEditError(message)
+    } finally {
+      setIsEditSubmitting(false)
+    }
+  }
+
+  // Delete Test Item Handlers
+  const handleOpenDeleteModal = (item: TestItem) => {
+    setDeletingItem(item)
+    setDeleteError(null)
+  }
+
+  const handleCloseDeleteModal = () => {
+    if (isDeleting) return
+    setDeletingItem(null)
+    setDeleteError(null)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deletingItem || isDeleting) return
+
+    setIsDeleting(true)
+    setDeleteError(null)
+
+    try {
+      const targetId = deletingItem.id
+      const targetTitle = deletingItem.title
+
+      const res = await fetch(`/api/test-items/${targetId}`, {
+        method: 'DELETE',
+      })
+
+      // Handle non-2xx HTTP responses
+      if (!res.ok) {
+        let errorMsg = `Server error (HTTP ${res.status})`
+        try {
+          const errorJson = (await res.json()) as ApiResponse<unknown>
+          if (errorJson?.error?.message) {
+            errorMsg = errorJson.error.message
+          }
+        } catch {
+          // Response body was not JSON; keep status-based fallback
+        }
+        throw new Error(errorMsg)
+      }
+
+      // Parse JSON response envelope and verify contract
+      const json = (await res.json()) as ApiResponse<{ id: number; message: string }>
+      if (res.status !== 200 || !json.success || !json.data || json.data.id !== targetId) {
+        const errorDetail = json.error?.message || 'Invalid API response format received from server.'
+        throw new Error(errorDetail)
+      }
+
+      // Success flow
+      setSuccessMessage(`Test item #${targetId} ("${targetTitle}") was deleted successfully!`)
+      setDeletingItem(null)
+      setDeleteError(null)
+
+      // Refresh test items catalog
+      void fetchTestItems()
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'An unexpected error occurred while deleting test item.'
+      setDeleteError(message)
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -990,6 +1200,9 @@ export default function App() {
                             <th scope="col" className="py-3.5 px-4 text-right">
                               Created At
                             </th>
+                            <th scope="col" className="py-3.5 px-4 text-right w-24">
+                              Actions
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/70 text-slate-300">
@@ -1039,6 +1252,54 @@ export default function App() {
                                 </td>
                                 <td className="py-3.5 px-4 text-right text-slate-400 whitespace-nowrap font-mono text-[11px]">
                                   {formatDate(item.createdAt)}
+                                </td>
+                                <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditModal(item)}
+                                      aria-label={`Edit test item #${item.id}: ${item.title}`}
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-indigo-500/10 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                      title="Edit item"
+                                    >
+                                      <svg
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth={2}
+                                        stroke="currentColor"
+                                        aria-hidden="true"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+                                        />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenDeleteModal(item)}
+                                      aria-label={`Delete test item #${item.id}: ${item.title}`}
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
+                                      title="Delete item"
+                                    >
+                                      <svg
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth={2}
+                                        stroke="currentColor"
+                                        aria-hidden="true"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                                        />
+                                      </svg>
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             )
@@ -1093,6 +1354,53 @@ export default function App() {
                               )}
                             </div>
                             <span className="font-mono text-[10px]">{formatDate(item.createdAt)}</span>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-800/50 flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditModal(item)}
+                              aria-label={`Edit test item #${item.id}: ${item.title}`}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700/80 transition-colors"
+                            >
+                              <svg
+                                className="h-3.5 w-3.5 text-indigo-400"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth={2}
+                                stroke="currentColor"
+                                aria-hidden="true"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+                                />
+                              </svg>
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDeleteModal(item)}
+                              aria-label={`Delete test item #${item.id}: ${item.title}`}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-300 hover:text-white bg-red-950/40 hover:bg-red-900/60 border border-red-500/20 transition-colors"
+                            >
+                              <svg
+                                className="h-3.5 w-3.5 text-red-400"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth={2}
+                                stroke="currentColor"
+                                aria-hidden="true"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                                />
+                              </svg>
+                              <span>Delete</span>
+                            </button>
                           </div>
                         </article>
                       )
@@ -1425,6 +1733,445 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Test Item Modal Dialog */}
+      {editingItem && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-modal-title"
+          className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4"
+        >
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
+            onClick={handleCloseEditModal}
+            aria-hidden="true"
+          />
+
+          {/* Modal Dialog Content */}
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 sm:p-7 space-y-5 my-8 z-10">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-slate-800">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h3 id="edit-modal-title" className="text-lg font-bold text-white tracking-tight">
+                    Edit Test Item
+                  </h3>
+                  <span className="font-mono text-xs text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                    #{editingItem.id}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Update test scenario specifications via <code className="text-indigo-300 font-mono">PUT /api/test-items/{editingItem.id}</code>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseEditModal}
+                disabled={isEditSubmitting}
+                aria-label="Close dialog"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Submission Error Banner */}
+            {editError && (
+              <div
+                role="alert"
+                className="bg-red-950/40 border border-red-500/40 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-red-300"
+              >
+                <svg
+                  className="h-4 w-4 text-red-400 shrink-0 mt-0.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                  />
+                </svg>
+                <div className="space-y-0.5 flex-1">
+                  <p className="font-semibold text-red-200">Failed to update test item</p>
+                  <p className="text-red-300/90 leading-relaxed">{editError}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Edit Form */}
+            <form onSubmit={handleEditSubmit} className="space-y-4" noValidate>
+              {/* Title Field */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="field-edit-title" className="text-xs font-semibold text-slate-200">
+                    Title <span className="text-indigo-400">*</span>
+                  </label>
+                  <span
+                    className={`text-[10px] font-mono ${
+                      typeof editFormData.title === 'string' && editFormData.title.length > 255
+                        ? 'text-red-400'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    {editFormData.title.length}/255
+                  </span>
+                </div>
+                <input
+                  id="field-edit-title"
+                  type="text"
+                  name="title"
+                  maxLength={255}
+                  disabled={isEditSubmitting}
+                  value={editFormData.title}
+                  onChange={(e) => {
+                    setEditFormData({ ...editFormData, title: e.target.value })
+                    if (editFormErrors.title) {
+                      setEditFormErrors({ ...editFormErrors, title: undefined })
+                    }
+                  }}
+                  placeholder="e.g. Verify boundary values on POST /api/test-items"
+                  className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border text-xs text-white placeholder-slate-500 transition-colors focus:outline-none focus:ring-2 disabled:opacity-50 ${
+                    editFormErrors.title
+                      ? 'border-red-500/80 focus:border-red-500 focus:ring-red-500/20'
+                      : 'border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20'
+                  }`}
+                  aria-invalid={editFormErrors.title ? 'true' : 'false'}
+                  aria-describedby={editFormErrors.title ? 'field-edit-title-error' : undefined}
+                />
+                {editFormErrors.title && (
+                  <p id="field-edit-title-error" className="text-[11px] text-red-400 font-medium flex items-center gap-1">
+                    <svg
+                      className="h-3 w-3 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                      />
+                    </svg>
+                    <span>{editFormErrors.title}</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Description Field */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="field-edit-description" className="text-xs font-semibold text-slate-200">
+                    Description <span className="text-slate-500 font-normal">(Optional)</span>
+                  </label>
+                </div>
+                <textarea
+                  id="field-edit-description"
+                  name="description"
+                  rows={3}
+                  disabled={isEditSubmitting}
+                  value={editFormData.description}
+                  onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                  placeholder="Detailed test preconditions, assertions, expected outcomes..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white placeholder-slate-500 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50 resize-none"
+                />
+              </div>
+
+              {/* Status & Complexity Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Status Select */}
+                <div className="space-y-1.5">
+                  <label htmlFor="field-edit-status" className="text-xs font-semibold text-slate-200">
+                    Status
+                  </label>
+                  <select
+                    id="field-edit-status"
+                    name="status"
+                    disabled={isEditSubmitting}
+                    value={editFormData.status}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, status: e.target.value as TestItemStatus })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50"
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </div>
+
+                {/* Complexity Number Input */}
+                <div className="space-y-1.5">
+                  <label htmlFor="field-edit-complexity" className="text-xs font-semibold text-slate-200">
+                    Complexity (1 - 10)
+                  </label>
+                  <input
+                    id="field-edit-complexity"
+                    type="number"
+                    name="complexity"
+                    min={1}
+                    max={10}
+                    step={1}
+                    disabled={isEditSubmitting}
+                    value={editFormData.complexity}
+                    onChange={(e) => {
+                      setEditFormData({ ...editFormData, complexity: e.target.value })
+                      if (editFormErrors.complexity) {
+                        setEditFormErrors({ ...editFormErrors, complexity: undefined })
+                      }
+                    }}
+                    className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border text-xs text-white transition-colors focus:outline-none focus:ring-2 disabled:opacity-50 ${
+                      editFormErrors.complexity
+                        ? 'border-red-500/80 focus:border-red-500 focus:ring-red-500/20'
+                        : 'border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20'
+                    }`}
+                    aria-invalid={editFormErrors.complexity ? 'true' : 'false'}
+                    aria-describedby={editFormErrors.complexity ? 'field-edit-complexity-error' : undefined}
+                  />
+                  {editFormErrors.complexity && (
+                    <p
+                      id="field-edit-complexity-error"
+                      className="text-[11px] text-red-400 font-medium flex items-center gap-1"
+                    >
+                      <svg
+                        className="h-3 w-3 shrink-0"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                        />
+                      </svg>
+                      <span>{editFormErrors.complexity}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Automation Checkbox */}
+              <div className="pt-1">
+                <label
+                  htmlFor="field-edit-is-automated"
+                  className="flex items-start gap-3 p-3 bg-slate-950/50 border border-slate-800/80 rounded-xl cursor-pointer hover:border-slate-700 transition-colors"
+                >
+                  <input
+                    id="field-edit-is-automated"
+                    type="checkbox"
+                    name="isAutomated"
+                    disabled={isEditSubmitting}
+                    checked={editFormData.isAutomated}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, isAutomated: e.target.checked })
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-950"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-semibold text-slate-200 block">
+                      Automated Test Case
+                    </span>
+                    <span className="text-[11px] text-slate-400 block leading-relaxed">
+                      Mark this scenario as implemented in an automated regression suite.
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleCloseEditModal}
+                  disabled={isEditSubmitting}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isEditSubmitting}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  {isEditSubmitting ? (
+                    <>
+                      <svg
+                        className="h-3.5 w-3.5 animate-spin text-white"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
+                        />
+                      </svg>
+                      <span>Saving Changes...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Test Item Confirmation Modal Dialog */}
+      {deletingItem && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-modal-title"
+          aria-describedby="delete-modal-description"
+          className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4"
+        >
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
+            onClick={handleCloseDeleteModal}
+            aria-hidden="true"
+          />
+
+          {/* Modal Dialog Content */}
+          <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 sm:p-7 space-y-5 my-8 z-10">
+            {/* Header Icon + Titles */}
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center shrink-0">
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                  />
+                </svg>
+              </div>
+              <div className="space-y-1">
+                <h3 id="delete-modal-title" className="text-base font-bold text-white tracking-tight">
+                  Confirm Item Deletion
+                </h3>
+                <p id="delete-modal-description" className="text-xs text-slate-400 leading-relaxed">
+                  Are you sure you want to delete test item <span className="font-mono text-indigo-300 font-semibold">#{deletingItem.id}</span>:
+                </p>
+              </div>
+            </div>
+
+            {/* Target Item Preview Card */}
+            <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 space-y-1.5 text-xs">
+              <p className="font-semibold text-white leading-snug">{deletingItem.title}</p>
+              <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                <span className="capitalize">{deletingItem.status.replace('_', ' ')}</span>
+                <span>&bull;</span>
+                <span>Complexity: {deletingItem.complexity}/10</span>
+                <span>&bull;</span>
+                <span>{deletingItem.isAutomated ? 'Automated' : 'Manual'}</span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 leading-relaxed">
+              <strong>Warning:</strong> This action cannot be undone. The record will be permanently deleted from the database.
+            </p>
+
+            {/* Deletion Error Banner */}
+            {deleteError && (
+              <div
+                role="alert"
+                className="bg-red-950/40 border border-red-500/40 rounded-xl p-3 flex items-start gap-2 text-xs text-red-300"
+              >
+                <svg
+                  className="h-4 w-4 text-red-400 shrink-0 mt-0.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                  />
+                </svg>
+                <div className="flex-1">
+                  <p className="font-semibold text-red-200">Failed to delete</p>
+                  <p className="text-red-300/90 leading-relaxed">{deleteError}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="pt-2 border-t border-slate-800 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleCloseDeleteModal}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-red-600 text-white hover:bg-red-500 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-400"
+              >
+                {isDeleting ? (
+                  <>
+                    <svg
+                      className="h-3.5 w-3.5 animate-spin text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
+                      />
+                    </svg>
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Delete Test Item</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
