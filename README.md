@@ -16,11 +16,13 @@ This project serves as a portfolio piece demonstrating software quality assuranc
 
 ## Tech Stack
 
-- **Runtime**: [Bun](https://bun.sh/) (v1.2+)
-- **Framework**: [ElysiaJS](https://elysiajs.com/) (fast, typed web framework)
+- **Backend Runtime**: [Bun](https://bun.sh/) (v1.2+)
+- **Backend Framework**: [ElysiaJS](https://elysiajs.com/) (fast, typed web framework)
 - **Database & ORM**: [MariaDB / MySQL](https://mariadb.org/) via [Drizzle ORM](https://orm.drizzle.team/)
 - **Validation**: [TypeBox](https://github.com/sinclairzx81/typebox) (Elysia schema validator)
 - **Test Framework**: `bun:test`
+- **Frontend Stack**: [React](https://react.dev/) (v19) + [Vite](https://vite.dev/) (v8) + [TypeScript](https://www.typescriptlang.org/)
+- **Frontend Styling & Linting**: [Tailwind CSS v4](https://tailwindcss.com/) + [Oxlint](https://oxc.rs/)
 - **API Client & Collection**: [Postman](https://www.postman.com/) (Collection v2.1.0)
 
 ---
@@ -58,7 +60,8 @@ All responses follow standard JSON response envelopes:
 ## Installation & Setup
 
 ### Prerequisites
-- [Bun](https://bun.sh/) installed on your system.
+- [Bun](https://bun.sh/) (v1.2+) installed on your system.
+- [Node.js](https://nodejs.org/) (v20.19+ or v22.12+).
 - MariaDB or MySQL running (e.g. via XAMPP).
 
 ### 1. Database Configuration (MariaDB / XAMPP)
@@ -110,7 +113,38 @@ bun run dev
 # Or run production server
 bun run start
 ```
-The server will be available at `http://localhost:3000`.
+The backend server will be available at `http://localhost:3000`.
+
+### 3. Frontend Setup & Development Server
+The frontend is an independent React + Vite + TypeScript application located in the `frontend/` directory.
+
+1. Install frontend dependencies (from the repository root):
+   ```bash
+   cd frontend
+   bun install
+   ```
+2. Start the frontend development server:
+   ```bash
+   bun run dev
+   ```
+   The frontend will be available at `http://localhost:5173`.
+
+3. **Vite Development Proxy**:
+   The frontend development server includes a proxy configuration in `frontend/vite.config.ts`. Any requests to:
+   - `/health` &rarr; forwarded to backend at `http://localhost:3000/health`
+   - `/api/*` &rarr; forwarded to backend at `http://localhost:3000/api/*`
+
+   This allows seamless API communication without requiring CORS changes on the backend. Ensure the backend server (`http://localhost:3000`) is running when testing API features.
+
+4. **Frontend Quality & Build Scripts**:
+   Run from the `frontend/` directory:
+   ```bash
+   # Run Oxlint linter
+   bun run lint
+
+   # Run TypeScript check and Vite production build
+   bun run build
+   ```
 
 ---
 
@@ -209,6 +243,22 @@ A complete execution of the collection in Postman Collection Runner against the 
 ├── docs/
 │   ├── TEST_PLAN.md            # QA test plan
 │   └── MANUAL_TEST_CASES.md    # Manual test cases & traceability matrix
+├── frontend/
+│   ├── public/
+│   │   └── favicon.svg         # Application favicon
+│   ├── src/
+│   │   ├── App.tsx             # Main placeholder component
+│   │   ├── index.css           # Tailwind CSS v4 import
+│   │   └── main.tsx            # React application entrypoint
+│   ├── .gitignore              # Frontend-specific ignore rules
+│   ├── .oxlintrc.json          # Oxlint configuration
+│   ├── bun.lock                # Frontend dependency lockfile
+│   ├── index.html              # HTML template
+│   ├── package.json            # Frontend scripts & dependencies
+│   ├── tsconfig.json           # Root TypeScript configuration
+│   ├── tsconfig.app.json       # App TypeScript configuration
+│   ├── tsconfig.node.json      # Node/Vite TypeScript configuration
+│   └── vite.config.ts          # Vite configuration with Tailwind & proxy
 ├── postman/
 │   ├── QA_Portfolio_Playground.postman_collection.json   # Postman collection with test scripts
 │   └── QA_Portfolio_Playground.postman_environment.json  # Environment variables for local execution
