@@ -715,6 +715,7 @@ export default function App() {
                 <button
                   key={item.id}
                   type="button"
+                  data-testid={`nav-${item.id}`}
                   onClick={() => handleSelectTab(item.id)}
                   aria-current={isActive ? 'page' : undefined}
                   className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
@@ -836,7 +837,7 @@ export default function App() {
                     <span className="text-xs font-semibold uppercase tracking-wider text-indigo-400">
                       QA Quality Dashboard
                     </span>
-                    <h3 id="welcome-heading" className="text-2xl font-bold text-white tracking-tight">
+                    <h3 id="welcome-heading" data-testid="dashboard-heading" className="text-2xl font-bold text-white tracking-tight">
                       Welcome to QA Portfolio Playground
                     </h3>
                   </div>
@@ -1029,10 +1030,10 @@ export default function App() {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2.5">
-                    <h3 id="items-heading" className="text-lg font-bold text-white tracking-tight">
+                    <h3 id="items-heading" data-testid="test-items-heading" className="text-lg font-bold text-white tracking-tight">
                       Test Items Catalog
                     </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                    <span data-testid="items-count-badge" className="px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                       {searchQuery.trim() || statusFilter !== 'all'
                         ? `${filteredAndSortedItems.length} of ${testItems.length} items`
                         : `${testItems.length} ${testItems.length === 1 ? 'item' : 'items'}`}
@@ -1046,6 +1047,7 @@ export default function App() {
                 <div className="flex items-center gap-2.5 self-start sm:self-auto">
                   <button
                     type="button"
+                    data-testid="create-item-btn"
                     onClick={handleOpenCreateModal}
                     aria-label="Create new test item"
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -1065,6 +1067,7 @@ export default function App() {
 
                   <button
                     type="button"
+                    data-testid="refresh-btn"
                     onClick={() => fetchTestItems()}
                     disabled={isLoading}
                     aria-label="Refresh test items"
@@ -1093,6 +1096,7 @@ export default function App() {
               {successMessage && (
                 <div
                   role="status"
+                  data-testid="success-alert"
                   className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-4 flex items-center justify-between gap-3 text-xs text-emerald-300 shadow-sm"
                 >
                   <div className="flex items-center gap-2.5">
@@ -1155,6 +1159,7 @@ export default function App() {
                     </div>
                     <input
                       type="text"
+                      data-testid="search-input"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Search test items by title..."
@@ -1164,6 +1169,7 @@ export default function App() {
                     {searchQuery && (
                       <button
                         type="button"
+                        data-testid="clear-search-btn"
                         onClick={() => setSearchQuery('')}
                         aria-label="Clear search query"
                         className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition-colors"
@@ -1191,6 +1197,7 @@ export default function App() {
                       </label>
                       <select
                         id="filter-status"
+                        data-testid="filter-status-select"
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
                         aria-label="Filter by status"
@@ -1211,6 +1218,7 @@ export default function App() {
                       </label>
                       <select
                         id="sort-by"
+                        data-testid="sort-select"
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as SortOption)}
                         aria-label="Sort test items"
@@ -1229,6 +1237,7 @@ export default function App() {
                     {(searchQuery.trim() !== '' || statusFilter !== 'all' || sortBy !== 'newest') && (
                       <button
                         type="button"
+                        data-testid="reset-filters-btn"
                         onClick={() => {
                           setSearchQuery('')
                           setStatusFilter('all')
@@ -1272,7 +1281,7 @@ export default function App() {
 
               {/* Error State */}
               {error && !isLoading && (
-                <div className="bg-red-950/30 border border-red-500/30 rounded-2xl p-8 text-center space-y-3.5 shadow-sm">
+                <div data-testid="fetch-error-card" className="bg-red-950/30 border border-red-500/30 rounded-2xl p-8 text-center space-y-3.5 shadow-sm">
                   <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-red-500/10 text-red-400 mx-auto">
                     <svg
                       className="h-6 w-6"
@@ -1343,7 +1352,7 @@ export default function App() {
 
               {/* Empty State: No results matching search and filter */}
               {!isLoading && !error && testItems.length > 0 && filteredAndSortedItems.length === 0 && (
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3.5 shadow-sm">
+                <div data-testid="no-matching-empty-state" className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3.5 shadow-sm">
                   <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-slate-800 text-slate-400 mx-auto">
                     <svg
                       className="h-6 w-6"
@@ -1377,6 +1386,7 @@ export default function App() {
                   <div>
                     <button
                       type="button"
+                      data-testid="clear-filters-btn"
                       onClick={() => {
                         setSearchQuery('')
                         setStatusFilter('all')
@@ -1423,18 +1433,20 @@ export default function App() {
                             </th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-800/70 text-slate-300">
+                        <tbody data-testid="test-items-table" className="divide-y divide-slate-800/70 text-slate-300">
                           {filteredAndSortedItems.map((item) => {
                             const badge = getStatusBadge(item.status)
                             return (
                               <tr
                                 key={item.id}
+                                data-testid="test-item-row"
+                                data-item-id={item.id}
                                 className="hover:bg-slate-800/40 transition-colors"
                               >
                                 <td className="py-3.5 px-4 font-mono text-slate-400">
                                   #{item.id}
                                 </td>
-                                <td className="py-3.5 px-4 font-semibold text-white">
+                                <td data-testid="test-item-title" className="py-3.5 px-4 font-semibold text-white">
                                   {item.title}
                                 </td>
                                 <td className="py-3.5 px-4 max-w-xs text-slate-400">
@@ -1446,6 +1458,7 @@ export default function App() {
                                 </td>
                                 <td className="py-3.5 px-4 whitespace-nowrap">
                                   <span
+                                    data-testid="test-item-status"
                                     className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${badge.classes}`}
                                   >
                                     {badge.label}
@@ -1475,6 +1488,7 @@ export default function App() {
                                   <div className="flex items-center justify-end gap-1.5">
                                     <button
                                       type="button"
+                                      data-testid={`edit-btn-${item.id}`}
                                       onClick={() => handleOpenEditModal(item)}
                                       aria-label={`Edit test item #${item.id}: ${item.title}`}
                                       className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-indigo-500/10 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -1497,6 +1511,7 @@ export default function App() {
                                     </button>
                                     <button
                                       type="button"
+                                      data-testid={`delete-btn-${item.id}`}
                                       onClick={() => handleOpenDeleteModal(item)}
                                       aria-label={`Delete test item #${item.id}: ${item.title}`}
                                       className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
@@ -1659,6 +1674,7 @@ export default function App() {
       {isCreateModalOpen && (
         <div
           role="dialog"
+          data-testid="create-modal"
           aria-modal="true"
           aria-labelledby="create-modal-title"
           className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4"
@@ -1749,6 +1765,7 @@ export default function App() {
                 </div>
                 <input
                   id="field-title"
+                  data-testid="create-title-input"
                   type="text"
                   name="title"
                   maxLength={255}
@@ -1916,6 +1933,7 @@ export default function App() {
               <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
                 <button
                   type="button"
+                  data-testid="create-cancel-btn"
                   onClick={handleCloseCreateModal}
                   disabled={isSubmitting}
                   className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
@@ -1924,6 +1942,7 @@ export default function App() {
                 </button>
                 <button
                   type="submit"
+                  data-testid="create-submit-btn"
                   disabled={isSubmitting}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 >
@@ -1959,6 +1978,7 @@ export default function App() {
       {editingItem && (
         <div
           role="dialog"
+          data-testid="edit-modal"
           aria-modal="true"
           aria-labelledby="edit-modal-title"
           className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4"
@@ -2054,6 +2074,7 @@ export default function App() {
                 </div>
                 <input
                   id="field-edit-title"
+                  data-testid="edit-title-input"
                   type="text"
                   name="title"
                   maxLength={255}
@@ -2223,6 +2244,7 @@ export default function App() {
               <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
                 <button
                   type="button"
+                  data-testid="edit-cancel-btn"
                   onClick={handleCloseEditModal}
                   disabled={isEditSubmitting}
                   className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
@@ -2231,6 +2253,7 @@ export default function App() {
                 </button>
                 <button
                   type="submit"
+                  data-testid="edit-submit-btn"
                   disabled={isEditSubmitting}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 >
@@ -2266,6 +2289,7 @@ export default function App() {
       {deletingItem && (
         <div
           role="dialog"
+          data-testid="delete-modal"
           aria-modal="true"
           aria-labelledby="delete-modal-title"
           aria-describedby="delete-modal-description"
@@ -2355,6 +2379,7 @@ export default function App() {
             <div className="pt-2 border-t border-slate-800 flex items-center justify-end gap-3">
               <button
                 type="button"
+                data-testid="delete-cancel-btn"
                 onClick={handleCloseDeleteModal}
                 disabled={isDeleting}
                 className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
@@ -2363,6 +2388,7 @@ export default function App() {
               </button>
               <button
                 type="button"
+                data-testid="delete-confirm-btn"
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-red-600 text-white hover:bg-red-500 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-400"
